@@ -48,7 +48,11 @@ export default function LoginPage() {
       });
       const userData = await userResponse.json();
 
-      setAuth({ username: userData.username, role: userData.role }, data.access_token);
+      setAuth({ 
+        id: userData.id,
+        username: userData.username, 
+        role: userData.role 
+      }, data.access_token);
       
       toast({
         title: "Bienvenido",

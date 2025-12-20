@@ -30,7 +30,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 
-interface User {
+interface SystemUser {
   id: number;
   username: string;
   role: 'ADMIN' | 'VENDEDOR';
@@ -51,7 +51,7 @@ export default function ConfiguracionPage() {
   const [activeTab, setActiveTab] = useState('negocio');
   
   // Users list
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<SystemUser[]>([]);
   
   // Business settings (stored in localStorage for MVP)
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings>({

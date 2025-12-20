@@ -4,6 +4,7 @@ import Cookies from 'js-cookie';
 export type UserRole = 'ADMIN' | 'VENDEDOR' | 'INVENTOR';
 
 interface User {
+  id?: number;
   username: string;
   role: UserRole;
 }
