@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from datetime import timedelta
 
-from database import engine, Base, get_db
+from database import engine, Base, get_db, AsyncSessionLocal
 from models import User, UserRole, Client, Product, ProductType, ProductQuality, ClientPayment
 from schemas import (
     Token, UserOut, ClientOut, ClientCreate, ClientUpdate, ProductOut, ProductCreate, ProductUpdate,
@@ -37,12 +37,26 @@ app.add_middleware(
 app.include_router(ingresos.router)
 app.include_router(ventas.router)
 
-# Create tables on startup (In production use Alembic)
+# Create tables on startup and seed admin user
 @app.on_event("startup")
 async def startup():
     async with engine.begin() as conn:
-        # await conn.run_sync(Base.metadata.drop_all) # Careful with this
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Create default admin user if no users exist
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(User))
+        if not result.scalars().first():
+            import bcrypt
+            hashed_password = bcrypt.hashpw("admin123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            admin_user = User(
+                username="admin",
+                hashed_password=hashed_password,
+                role=UserRole.ADMIN
+            )
+            db.add(admin_user)
+            await db.commit()
+            print("✅ Admin user created: admin / admin123")
 
 @app.post("/login", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
