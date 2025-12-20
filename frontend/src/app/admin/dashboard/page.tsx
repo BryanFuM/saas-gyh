@@ -131,7 +131,7 @@ export default function AdminDashboard() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
                 <YAxis />
-                <Tooltip formatter={(value: number) => `S/ ${value.toFixed(2)}`} />
+                <Tooltip formatter={(value) => `S/ ${Number(value).toFixed(2)}`} />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
