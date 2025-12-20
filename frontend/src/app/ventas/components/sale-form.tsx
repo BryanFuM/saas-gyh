@@ -76,7 +76,7 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
   const ticketRef = useRef<HTMLDivElement>(null);
 
   const handlePrint = useReactToPrint({
-    content: () => ticketRef.current,
+    contentRef: ticketRef,
   });
 
   useEffect(() => {
@@ -329,18 +329,19 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
                         type="number" 
                         step="0.1"
                         value={item.unit_sale_price} 
-                      onChange={(e) => updateItem(index, 'unit_sale_price', parseFloat(e.target.value))}
-                    />
+                        onChange={(e) => updateItem(index, 'unit_sale_price', parseFloat(e.target.value))}
+                      />
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="text-red-500 self-end"
+                      onClick={() => removeItem(index)}
+                      disabled={items.length === 1}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="text-red-500"
-                    onClick={() => removeItem(index)}
-                    disabled={items.length === 1}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
                 </div>
               ))}
             </div>
