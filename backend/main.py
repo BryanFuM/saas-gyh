@@ -8,7 +8,7 @@ from datetime import timedelta
 from database import engine, Base, get_db, AsyncSessionLocal
 from models import User, UserRole, Client, Product, ProductType, ProductQuality, ClientPayment
 from schemas import (
-    Token, UserOut, ClientOut, ClientCreate, ClientUpdate, ProductOut, ProductCreate, ProductUpdate,
+    Token, UserOut, UserCreate, ClientOut, ClientCreate, ClientUpdate, ProductOut, ProductCreate, ProductUpdate,
     ProductTypeOut, ProductTypeCreate, ProductQualityOut, ProductQualityCreate,
     ClientPaymentOut, ClientPaymentCreate
 )
@@ -77,10 +77,49 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 async def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
-# RBAC Examples
+# RBAC Checkers (must be defined before usage)
 allow_admin = RoleChecker([UserRole.ADMIN])
 allow_vendedor = RoleChecker([UserRole.ADMIN, UserRole.VENDEDOR])
 allow_inventor = RoleChecker([UserRole.ADMIN, UserRole.INVENTOR])
+
+# User Management (Admin only)
+@app.get("/users", response_model=list[UserOut])
+async def list_users(db: AsyncSession = Depends(get_db), current_user: User = Depends(allow_admin)):
+    result = await db.execute(select(User))
+    return result.scalars().all()
+
+@app.post("/users", response_model=UserOut)
+async def create_user(user_data: UserCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(allow_admin)):
+    # Check if username already exists
+    result = await db.execute(select(User).where(User.username == user_data.username))
+    if result.scalars().first():
+        raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
+    
+    hashed_password = get_password_hash(user_data.password)
+    db_user = User(
+        username=user_data.username,
+        hashed_password=hashed_password,
+        role=user_data.role
+    )
+    db.add(db_user)
+    await db.commit()
+    await db.refresh(db_user)
+    return db_user
+
+@app.delete("/users/{user_id}")
+async def delete_user(user_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(allow_admin)):
+    # Prevent deleting yourself
+    if current_user.id == user_id:
+        raise HTTPException(status_code=400, detail="No puedes eliminar tu propio usuario")
+    
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    await db.delete(user)
+    await db.commit()
+    return {"message": "Usuario eliminado"}
 
 @app.get("/clients", response_model=list[ClientOut])
 async def get_clients(db: AsyncSession = Depends(get_db), current_user: User = Depends(allow_vendedor)):

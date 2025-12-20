@@ -248,7 +248,7 @@ export default function ReportesPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold text-primary mb-4">
-                      {totalStockJavas.toFixed(0)} javas
+                      {totalStockJavas.toFixed(2)} javas
                     </div>
                     <div className="space-y-3">
                       {stock.map(s => (

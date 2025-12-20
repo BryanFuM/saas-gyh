@@ -17,18 +17,23 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { 
-  Command, 
-  CommandEmpty, 
-  CommandGroup, 
-  CommandInput, 
-  CommandItem 
-} from '@/components/ui/command';
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { 
-  Popover, 
-  PopoverContent, 
-  PopoverTrigger 
-} from '@/components/ui/popover';
-import { Check, ChevronsUpDown, Plus, Trash2, Printer } from 'lucide-react';
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { ProductSelect, ClientSelect } from '@/components/ui/searchable-select';
+import { Check, ChevronsUpDown, Plus, Trash2, Printer, Save, Scale } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TicketTemplate } from './ticket-template';
 import { useReactToPrint } from 'react-to-print';
@@ -38,6 +43,7 @@ interface Product {
   name: string;
   type: string;
   quality: string;
+  conversion_factor: number;
   stock_available?: number;
 }
 
@@ -56,7 +62,8 @@ interface Client {
 
 interface SaleItem {
   product_id: number;
-  quantity_javas: number;
+  quantity: number;  // User-entered quantity (could be KG or Java)
+  unit: 'JAVA' | 'KG';
   unit_sale_price: number;
 }
 
@@ -66,10 +73,13 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [stock, setStock] = useState<StockItem[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [items, setItems] = useState<SaleItem[]>([{ product_id: 0, quantity_javas: 1, unit_sale_price: 0 }]);
-  const [openClient, setOpenClient] = useState(false);
+  const [items, setItems] = useState<SaleItem[]>([{ product_id: 0, quantity: 1, unit: 'JAVA', unit_sale_price: 0 }]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastSale, setLastSale] = useState<any>(null);
+  
+  // Confirmation modal state
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [shouldPrintAfterSave, setShouldPrintAfterSave] = useState(false);
   
   const { token } = useAuthStore();
   const { toast } = useToast();
@@ -117,8 +127,28 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
     return stockItem ? stockItem.total_javas_available : 0;
   };
 
+  const getProductById = (productId: number): Product | undefined => {
+    return products.find(p => p.id === productId);
+  };
+
+  // Convert quantity to javas based on unit
+  const getQuantityInJavas = (item: SaleItem): number => {
+    if (item.unit === 'KG') {
+      const product = getProductById(item.product_id);
+      const conversionFactor = product?.conversion_factor || 20;
+      return item.quantity / conversionFactor;
+    }
+    return item.quantity;
+  };
+
+  // Create stock map for ProductSelect component
+  const stockMap: Record<number, number> = {};
+  stock.forEach(s => {
+    stockMap[s.product_id] = s.total_javas_available;
+  });
+
   const addItem = () => {
-    setItems([...items, { product_id: 0, quantity_javas: 1, unit_sale_price: 0 }]);
+    setItems([...items, { product_id: 0, quantity: 1, unit: 'JAVA', unit_sale_price: 0 }]);
   };
 
   const removeItem = (index: number) => {
@@ -131,44 +161,67 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
     setItems(newItems);
   };
 
-  const calculateSubtotal = () => {
-    return items.reduce((acc, item) => acc + (item.quantity_javas * item.unit_sale_price), 0);
+  const calculateItemTotal = (item: SaleItem): number => {
+    const quantityInJavas = getQuantityInJavas(item);
+    return quantityInJavas * item.unit_sale_price;
   };
 
-  const handleSubmit = async () => {
+  const calculateSubtotal = () => {
+    return items.reduce((acc, item) => acc + calculateItemTotal(item), 0);
+  };
+
+  // Validation before showing confirmation modal
+  const validateSale = (): boolean => {
     if (mode === 'PEDIDO' && !selectedClient) {
       toast({ variant: "destructive", title: "Error", description: "Selecciona un cliente" });
-      return;
+      return false;
     }
 
     if (items.some(item => item.product_id === 0 || item.unit_sale_price <= 0)) {
       toast({ variant: "destructive", title: "Error", description: "Completa todos los productos y precios" });
-      return;
+      return false;
     }
 
-    // Validar stock disponible
+    // Validate stock available
     for (const item of items) {
       const availableStock = getStockForProduct(item.product_id);
-      if (item.quantity_javas > availableStock) {
+      const quantityInJavas = getQuantityInJavas(item);
+      if (quantityInJavas > availableStock) {
         const product = products.find(p => p.id === item.product_id);
         toast({ 
           variant: "destructive", 
           title: "Stock Insuficiente", 
-          description: `${product?.name || 'Producto'}: Solo hay ${availableStock.toFixed(1)} javas disponibles, intentas vender ${item.quantity_javas}` 
+          description: `${product?.name || 'Producto'}: Solo hay ${availableStock.toFixed(2)} javas disponibles, intentas vender ${quantityInJavas.toFixed(2)} javas` 
         });
-        return;
+        return false;
       }
     }
 
+    return true;
+  };
+
+  // Show confirmation modal
+  const handleShowConfirmation = (shouldPrint: boolean) => {
+    if (!validateSale()) return;
+    setShouldPrintAfterSave(shouldPrint);
+    setShowConfirmModal(true);
+  };
+
+  // Actual submission
+  const handleConfirmedSubmit = async () => {
+    setShowConfirmModal(false);
     setIsLoading(true);
+    
     try {
       const saleData = {
         type: mode,
         client_id: mode === 'PEDIDO' ? selectedClient?.id : null,
         items: items.map(item => ({
           product_id: item.product_id,
-          quantity_javas: item.quantity_javas,
-          unit_sale_price: item.unit_sale_price
+          quantity_javas: item.quantity,  // Original quantity entered
+          unit_sale_price: item.unit_sale_price,
+          unit: item.unit,
+          quantity_original: item.quantity
         }))
       };
 
@@ -181,25 +234,31 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
         body: JSON.stringify(saleData)
       });
 
-      if (!res.ok) throw new Error('Error al guardar la venta');
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || 'Error al guardar la venta');
+      }
 
       const savedSale = await res.json();
       setLastSale(savedSale);
       
       toast({
         title: "Venta Exitosa",
-        description: mode === 'PEDIDO' ? "Ticket enviado a WhatsApp (Mock)" : "Venta registrada",
+        description: mode === 'PEDIDO' ? "Pedido registrado correctamente" : "Venta registrada correctamente",
       });
 
-      // Refrescar stock después de venta
+      // Refresh stock after sale
       fetchStock();
 
-      // Trigger print after state update
-      setTimeout(() => {
-        handlePrint();
-        onSuccess();
-        resetForm();
-      }, 500);
+      if (shouldPrintAfterSave) {
+        // Trigger print after state update
+        setTimeout(() => {
+          handlePrint();
+        }, 500);
+      }
+
+      onSuccess();
+      resetForm();
 
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
@@ -210,8 +269,9 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
 
   const resetForm = () => {
     setSelectedClient(null);
-    setItems([{ product_id: 0, quantity_javas: 1, unit_sale_price: 0 }]);
+    setItems([{ product_id: 0, quantity: 1, unit: 'JAVA', unit_sale_price: 0 }]);
     setLastSale(null);
+    setShouldPrintAfterSave(false);
   };
 
   return (
@@ -237,44 +297,15 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
             {mode === 'PEDIDO' && (
               <div className="space-y-2">
                 <Label>Cliente</Label>
-                <Popover open={openClient} onOpenChange={setOpenClient}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={openClient}
-                      className="w-full justify-between"
-                    >
-                      {selectedClient ? selectedClient.name : "Buscar cliente..."}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[400px] p-0">
-                    <Command>
-                      <CommandInput placeholder="Nombre del cliente..." />
-                      <CommandEmpty>No se encontró el cliente.</CommandEmpty>
-                      <CommandGroup>
-                        {clients.map((client) => (
-                          <CommandItem
-                            key={client.id}
-                            onSelect={() => {
-                              setSelectedClient(client);
-                              setOpenClient(false);
-                            }}
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                selectedClient?.id === client.id ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            {client.name} - {client.whatsapp_number}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+                <ClientSelect
+                  clients={clients}
+                  value={selectedClient?.id || null}
+                  onSelect={(clientId) => {
+                    const client = clients.find(c => c.id === clientId);
+                    setSelectedClient(client || null);
+                  }}
+                  disabled={isLoading}
+                />
               </div>
             )}
 
@@ -286,68 +317,100 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
                 </Button>
               </div>
 
-              {items.map((item, index) => (
-                <div key={index} className="flex flex-col md:flex-row gap-3 md:gap-4 md:items-end border-b pb-4">
-                  <div className="flex-1 space-y-2">
-                    <Label className="text-sm">Producto</Label>
-                    <Select 
-                      value={item.product_id.toString()} 
-                      onValueChange={(v) => updateItem(index, 'product_id', parseInt(v))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {products.map(p => {
-                          const stockAvailable = getStockForProduct(p.id);
-                          return (
-                            <SelectItem key={p.id} value={p.id.toString()}>
-                              {p.name} ({p.quality}) - {stockAvailable.toFixed(1)} javas
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectContent>
-                    </Select>
-                    {item.product_id > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        Stock disponible: {getStockForProduct(item.product_id).toFixed(1)} javas
+              {items.map((item, index) => {
+                const product = getProductById(item.product_id);
+                const quantityInJavas = getQuantityInJavas(item);
+                const stockAvailable = getStockForProduct(item.product_id);
+                
+                return (
+                  <div key={index} className="flex flex-col gap-3 border-b pb-4">
+                    <div className="flex-1 space-y-2">
+                      <Label className="text-sm">Producto</Label>
+                      <ProductSelect
+                        products={products}
+                        stockMap={stockMap}
+                        value={item.product_id || null}
+                        onSelect={(productId) => updateItem(index, 'product_id', productId || 0)}
+                        disabled={isLoading}
+                      />
+                      {item.product_id > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Stock: {stockAvailable.toFixed(2)} javas
+                          {item.unit === 'KG' && product && (
+                            <span className="ml-2">
+                              | Conversión: {product.conversion_factor} kg = 1 java
+                            </span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-3 items-end">
+                      <div className="w-24 space-y-2">
+                        <Label className="text-sm">Unidad</Label>
+                        <Select 
+                          value={item.unit} 
+                          onValueChange={(v) => updateItem(index, 'unit', v as 'JAVA' | 'KG')}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="JAVA">Javas</SelectItem>
+                            <SelectItem value="KG">KG</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="w-24 space-y-2">
+                        <Label className="text-sm">
+                          {item.unit === 'JAVA' ? 'Javas' : 'Kilos'}
+                        </Label>
+                        <Input 
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          value={item.quantity} 
+                          onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value) || 0)}
+                        />
+                      </div>
+                      <div className="w-28 space-y-2">
+                        <Label className="text-sm">Precio/Java</Label>
+                        <Input 
+                          type="number" 
+                          step="0.1"
+                          min="0"
+                          value={item.unit_sale_price} 
+                          onChange={(e) => updateItem(index, 'unit_sale_price', parseFloat(e.target.value) || 0)}
+                        />
+                      </div>
+                      <div className="flex-1 min-w-[100px] space-y-2">
+                        <Label className="text-sm text-muted-foreground">Subtotal</Label>
+                        <div className="h-10 flex items-center font-medium">
+                          S/ {calculateItemTotal(item).toFixed(2)}
+                        </div>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="text-red-500"
+                        onClick={() => removeItem(index)}
+                        disabled={items.length === 1}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {item.unit === 'KG' && item.product_id > 0 && item.quantity > 0 && (
+                      <p className="text-xs text-blue-600 flex items-center gap-1">
+                        <Scale className="h-3 w-3" />
+                        {item.quantity} kg = {quantityInJavas.toFixed(2)} javas
                       </p>
                     )}
                   </div>
-                  <div className="flex gap-3 md:gap-4">
-                    <div className="flex-1 md:w-24 space-y-2">
-                      <Label className="text-sm">Javas</Label>
-                      <Input 
-                        type="number" 
-                        value={item.quantity_javas} 
-                        onChange={(e) => updateItem(index, 'quantity_javas', parseFloat(e.target.value))}
-                      />
-                    </div>
-                    <div className="flex-1 md:w-32 space-y-2">
-                      <Label className="text-sm">Precio U.</Label>
-                      <Input 
-                        type="number" 
-                        step="0.1"
-                        value={item.unit_sale_price} 
-                        onChange={(e) => updateItem(index, 'unit_sale_price', parseFloat(e.target.value))}
-                      />
-                    </div>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="text-red-500 self-end"
-                      onClick={() => removeItem(index)}
-                      disabled={items.length === 1}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
           <CardFooter className="flex flex-col items-end gap-4 bg-gray-50 p-6">
-            <div className="text-right space-y-1">
+            <div className="text-right space-y-1 w-full md:w-auto">
               <p className="text-sm text-gray-500">Subtotal Venta: S/ {calculateSubtotal().toFixed(2)}</p>
               {mode === 'PEDIDO' && selectedClient && (
                 <>
@@ -361,12 +424,125 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
                 <p className="text-xl font-bold text-primary">Total a Pagar: S/ {calculateSubtotal().toFixed(2)}</p>
               )}
             </div>
-            <Button className="w-full md:w-auto px-12 py-6 text-lg" onClick={handleSubmit} disabled={isLoading}>
-              {isLoading ? "Procesando..." : "Finalizar e Imprimir Ticket"}
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+              <Button 
+                variant="outline" 
+                className="flex-1 sm:flex-none px-6 py-6 text-base"
+                onClick={() => handleShowConfirmation(false)} 
+                disabled={isLoading}
+              >
+                <Save className="h-4 w-4 mr-2" />
+                Solo Guardar
+              </Button>
+              <Button 
+                className="flex-1 sm:flex-none px-6 py-6 text-base"
+                onClick={() => handleShowConfirmation(true)} 
+                disabled={isLoading}
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                {isLoading ? "Procesando..." : "Guardar e Imprimir"}
+              </Button>
+            </div>
           </CardFooter>
         </Card>
       </Tabs>
+
+      {/* Confirmation Modal */}
+      <Dialog open={showConfirmModal} onOpenChange={setShowConfirmModal}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Confirmar Venta</DialogTitle>
+            <DialogDescription>
+              Revisa los detalles antes de confirmar
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {mode === 'PEDIDO' && selectedClient && (
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <p className="font-medium">Cliente: {selectedClient.name}</p>
+                <p className="text-sm text-gray-600">Tel: {selectedClient.whatsapp_number}</p>
+              </div>
+            )}
+            
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Producto</TableHead>
+                  <TableHead className="text-right">Cantidad</TableHead>
+                  <TableHead className="text-right">Precio/Java</TableHead>
+                  <TableHead className="text-right">Subtotal</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((item, index) => {
+                  const product = getProductById(item.product_id);
+                  return (
+                    <TableRow key={index}>
+                      <TableCell>{product?.name || 'Producto'}</TableCell>
+                      <TableCell className="text-right">
+                        {item.quantity} {item.unit === 'KG' ? 'kg' : 'javas'}
+                        {item.unit === 'KG' && (
+                          <span className="text-xs text-muted-foreground ml-1">
+                            ({getQuantityInJavas(item).toFixed(2)} javas)
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">S/ {item.unit_sale_price.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-medium">S/ {calculateItemTotal(item).toFixed(2)}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+
+            <div className="border-t pt-4 space-y-2">
+              <div className="flex justify-between text-lg font-bold">
+                <span>Total Venta:</span>
+                <span>S/ {calculateSubtotal().toFixed(2)}</span>
+              </div>
+              
+              {mode === 'PEDIDO' && selectedClient && (
+                <div className="bg-yellow-50 p-4 rounded-lg space-y-1">
+                  <div className="flex justify-between">
+                    <span>Deuda Anterior:</span>
+                    <span>S/ {parseFloat(selectedClient.current_debt).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>+ Venta Actual:</span>
+                    <span>S/ {calculateSubtotal().toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-lg border-t pt-2">
+                    <span>Nueva Deuda Total:</span>
+                    <span className="text-red-600">
+                      S/ {(calculateSubtotal() + parseFloat(selectedClient.current_debt)).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowConfirmModal(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleConfirmedSubmit} disabled={isLoading}>
+              {shouldPrintAfterSave ? (
+                <>
+                  <Printer className="h-4 w-4 mr-2" />
+                  Confirmar e Imprimir
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Confirmar
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Hidden Ticket for Printing */}
       <div className="hidden">

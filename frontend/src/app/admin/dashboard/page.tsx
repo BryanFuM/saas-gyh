@@ -92,7 +92,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {stock.reduce((acc, s) => acc + s.total_javas_available, 0).toFixed(1)}
+              {stock.reduce((acc, s) => acc + s.total_javas_available, 0).toFixed(2)}
             </div>
             <p className="text-xs text-muted-foreground">Javas en almacén</p>
           </CardContent>

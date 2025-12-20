@@ -67,8 +67,10 @@ class Product(Base):
     name = Column(String, nullable=False)
     type = Column(String, nullable=False) # e.g., Kion
     quality = Column(String, nullable=False) # e.g., Primera, Segunda
+    conversion_factor = Column(Float, default=20.0, server_default="20.0", nullable=False)  # kg per java
     
     venta_items = relationship("VentaItem", back_populates="product")
+    ingresos = relationship("Ingreso", back_populates="product")
 
 class Ingreso(Base):
     __tablename__ = "ingresos"
@@ -81,7 +83,9 @@ class Ingreso(Base):
     total_kg = Column(Float, nullable=False)
     conversion_factor = Column(Float, default=20.0, nullable=False)
     total_javas = Column(Float, nullable=False)
-    unit_cost_price = Column(Float, nullable=False)
+    unit_cost_price = Column(Float, nullable=False)  # Always stored per Java
+    
+    product = relationship("Product", back_populates="ingresos")
 
 class Venta(Base):
     __tablename__ = "ventas"
@@ -104,7 +108,9 @@ class VentaItem(Base):
     id = Column(Integer, primary_key=True, index=True)
     venta_id = Column(Integer, ForeignKey("ventas.id"), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
-    quantity_javas = Column(Float, nullable=False)
+    quantity_javas = Column(Float, nullable=False)  # Always stored in javas (calculated if unit is KG)
+    quantity_original = Column(Float, nullable=True)  # Original quantity entered by user
+    unit = Column(String, default="JAVA", server_default="JAVA", nullable=False)  # JAVA or KG
     unit_sale_price = Column(Numeric(10, 2), nullable=False)
 
     venta = relationship("Venta", back_populates="items")

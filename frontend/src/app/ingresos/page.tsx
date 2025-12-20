@@ -8,13 +8,17 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Truck, Package, Plus } from 'lucide-react';
+import { Truck, Package, Plus, Scale, ArrowRight } from 'lucide-react';
+import { format, parseISO, isValid } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { ProductSelect } from '@/components/ui/searchable-select';
 
 interface Product {
   id: number;
   name: string;
   type: string;
   quality: string;
+  conversion_factor: number;
 }
 
 interface Ingreso {
@@ -40,15 +44,50 @@ export default function IngresosPage() {
   // Form state
   const [truckId, setTruckId] = useState('');
   const [supplierName, setSupplierName] = useState('');
-  const [productId, setProductId] = useState('');
+  const [productId, setProductId] = useState<number | null>(null);
   const [totalKg, setTotalKg] = useState('');
   const [conversionFactor, setConversionFactor] = useState('20');
-  const [unitCostPrice, setUnitCostPrice] = useState('');
+  
+  // Cost price flexibility
+  const [costPriceMode, setCostPriceMode] = useState<'JAVA' | 'KG'>('JAVA');
+  const [costPriceInput, setCostPriceInput] = useState('');
 
   // Calculated javas
   const calculatedJavas = totalKg && conversionFactor 
     ? (parseFloat(totalKg) / parseFloat(conversionFactor)).toFixed(2) 
     : '0';
+
+  // Calculate cost per java based on mode
+  const costPerJava = (() => {
+    if (!costPriceInput || !conversionFactor) return 0;
+    const inputValue = parseFloat(costPriceInput);
+    if (costPriceMode === 'KG') {
+      // Convert price per KG to price per Java
+      return inputValue * parseFloat(conversionFactor);
+    }
+    return inputValue;
+  })();
+
+  // Calculate cost per kg for display
+  const costPerKg = (() => {
+    if (!costPriceInput || !conversionFactor) return 0;
+    const inputValue = parseFloat(costPriceInput);
+    if (costPriceMode === 'JAVA') {
+      // Convert price per Java to price per KG
+      return inputValue / parseFloat(conversionFactor);
+    }
+    return inputValue;
+  })();
+
+  // Auto-set conversion factor when product changes
+  useEffect(() => {
+    if (productId) {
+      const product = products.find(p => p.id === productId);
+      if (product?.conversion_factor) {
+        setConversionFactor(product.conversion_factor.toString());
+      }
+    }
+  }, [productId, products]);
 
   useEffect(() => {
     fetchProducts();
@@ -83,8 +122,23 @@ export default function IngresosPage() {
     }
   };
 
+  const resetForm = () => {
+    setTruckId('');
+    setSupplierName('');
+    setProductId(null);
+    setTotalKg('');
+    setConversionFactor('20');
+    setCostPriceInput('');
+    setCostPriceMode('JAVA');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!productId) {
+      toast({ title: "Error", description: "Selecciona un producto", variant: "destructive" });
+      return;
+    }
+    
     setIsLoading(true);
 
     try {
@@ -97,10 +151,10 @@ export default function IngresosPage() {
         body: JSON.stringify({
           truck_id: truckId,
           supplier_name: supplierName,
-          product_id: parseInt(productId),
+          product_id: productId,
           total_kg: parseFloat(totalKg),
           conversion_factor: parseFloat(conversionFactor),
-          unit_cost_price: parseFloat(unitCostPrice),
+          unit_cost_price: costPerJava, // Always send price per Java
         }),
       });
 
@@ -113,15 +167,7 @@ export default function IngresosPage() {
         description: "Ingreso de mercadería registrado correctamente",
       });
 
-      // Reset form
-      setTruckId('');
-      setSupplierName('');
-      setProductId('');
-      setTotalKg('');
-      setConversionFactor('20');
-      setUnitCostPrice('');
-
-      // Refresh list
+      resetForm();
       fetchIngresos();
     } catch (error: any) {
       toast({
@@ -133,6 +179,24 @@ export default function IngresosPage() {
       setIsLoading(false);
     }
   };
+
+  const formatDate = (dateString: string): string => {
+    try {
+      const date = parseISO(dateString);
+      if (!isValid(date)) return 'Fecha inválida';
+      return format(date, "dd MMM yyyy", { locale: es });
+    } catch {
+      return 'Fecha inválida';
+    }
+  };
+
+  const getProductName = (productId: number): string => {
+    const product = products.find(p => p.id === productId);
+    return product ? `${product.name} (${product.quality})` : `Producto #${productId}`;
+  };
+
+  // Create stock map (empty for ingresos, just need the product info)
+  const stockMap: Record<number, number> = {};
 
   return (
     <div className="p-4 md:p-8">
@@ -180,19 +244,14 @@ export default function IngresosPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="product">Producto</Label>
-                <Select value={productId} onValueChange={setProductId} required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecciona un producto" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {products.map((product) => (
-                      <SelectItem key={product.id} value={product.id.toString()}>
-                        {product.name} - {product.type} ({product.quality})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Producto</Label>
+                <ProductSelect
+                  products={products}
+                  stockMap={stockMap}
+                  value={productId}
+                  onSelect={setProductId}
+                  disabled={isLoading}
+                />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -222,26 +281,67 @@ export default function IngresosPage() {
                 </div>
               </div>
 
-              <div className="p-4 bg-blue-50 rounded-lg">
+              <div className="p-4 bg-blue-50 rounded-lg flex items-center gap-2">
+                <Scale className="h-5 w-5 text-blue-600" />
                 <p className="text-sm text-blue-700">
                   <strong>Javas Calculadas:</strong> {calculatedJavas} javas
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="unitCostPrice">Precio Costo por Java (S/.)</Label>
-                <Input
-                  id="unitCostPrice"
-                  type="number"
-                  step="0.01"
-                  value={unitCostPrice}
-                  onChange={(e) => setUnitCostPrice(e.target.value)}
-                  placeholder="0.00"
-                  required
-                />
+              {/* Cost Price with Mode Selection */}
+              <div className="space-y-3 p-4 border rounded-lg">
+                <Label className="text-base font-medium">Precio de Costo</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={costPriceMode === 'JAVA' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setCostPriceMode('JAVA')}
+                    className="flex-1"
+                  >
+                    Por Java
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={costPriceMode === 'KG' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setCostPriceMode('KG')}
+                    className="flex-1"
+                  >
+                    Por KG
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="costPriceInput">
+                    Precio por {costPriceMode === 'JAVA' ? 'Java' : 'KG'} (S/.)
+                  </Label>
+                  <Input
+                    id="costPriceInput"
+                    type="number"
+                    step="0.01"
+                    value={costPriceInput}
+                    onChange={(e) => setCostPriceInput(e.target.value)}
+                    placeholder="0.00"
+                    required
+                  />
+                </div>
+                {costPriceInput && parseFloat(costPriceInput) > 0 && (
+                  <div className="p-3 bg-gray-50 rounded-lg text-sm space-y-1">
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <span>S/. {costPerKg.toFixed(2)}/kg</span>
+                      <ArrowRight className="h-4 w-4" />
+                      <span className="font-medium text-primary">S/. {costPerJava.toFixed(2)}/java</span>
+                    </div>
+                    {totalKg && (
+                      <p className="text-gray-500">
+                        Costo Total: S/. {(costPerJava * parseFloat(calculatedJavas)).toFixed(2)}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full" disabled={isLoading || !productId}>
                 {isLoading ? 'Registrando...' : 'Registrar Ingreso'}
               </Button>
             </form>
@@ -266,8 +366,10 @@ export default function IngresosPage() {
                   <div key={ingreso.id} className="p-4 border rounded-lg">
                     <div className="flex justify-between items-start">
                       <div>
-                        <p className="font-medium">Camión: {ingreso.truck_id}</p>
-                        <p className="text-sm text-gray-500">{ingreso.supplier_name}</p>
+                        <p className="font-medium">{getProductName(ingreso.product_id)}</p>
+                        <p className="text-sm text-gray-500">
+                          Camión: {ingreso.truck_id} | {ingreso.supplier_name}
+                        </p>
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-primary">{ingreso.total_javas.toFixed(2)} javas</p>
@@ -275,8 +377,8 @@ export default function IngresosPage() {
                       </div>
                     </div>
                     <div className="mt-2 flex justify-between text-sm text-gray-500">
-                      <span>Costo: S/. {ingreso.unit_cost_price}/java</span>
-                      <span>{new Date(ingreso.date).toLocaleDateString()}</span>
+                      <span>Costo: S/. {ingreso.unit_cost_price.toFixed(2)}/java</span>
+                      <span>{formatDate(ingreso.date)}</span>
                     </div>
                   </div>
                 ))}

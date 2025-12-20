@@ -70,7 +70,7 @@ export default function HomePage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {stock.reduce((acc, item) => acc + item.total_javas_available, 0).toFixed(0)} javas
+              {stock.reduce((acc, item) => acc + item.total_javas_available, 0).toFixed(2)} javas
             </div>
           </CardContent>
         </Card>

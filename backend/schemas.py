@@ -17,6 +17,11 @@ class UserLogin(BaseModel):
     username: str
     password: str
 
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: UserRole = UserRole.VENDEDOR
+
 class UserOut(BaseModel):
     id: int
     username: str
@@ -90,6 +95,7 @@ class ProductBase(BaseModel):
     name: str
     type: str
     quality: str
+    conversion_factor: float = 20.0  # kg per java
 
 class ProductCreate(ProductBase):
     pass
@@ -98,6 +104,7 @@ class ProductUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
     quality: Optional[str] = None
+    conversion_factor: Optional[float] = None
 
 class ProductOut(ProductBase):
     id: int
@@ -150,8 +157,10 @@ class StockOut(BaseModel):
 # Venta Schemas
 class VentaItemBase(BaseModel):
     product_id: int
-    quantity_javas: float
+    quantity_javas: float  # If unit is KG, this will be calculated by backend
     unit_sale_price: Decimal
+    unit: str = "JAVA"  # JAVA or KG
+    quantity_original: Optional[float] = None  # Original quantity entered
 
 class VentaItemCreate(VentaItemBase):
     pass
