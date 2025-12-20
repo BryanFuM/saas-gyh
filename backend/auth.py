@@ -7,9 +7,9 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .database import get_db
-from .models import User, UserRole
-from .schemas import TokenData
+from database import get_db
+from models import User, UserRole
+from schemas import TokenData
 
 # Configuration (In a real app, use environment variables)
 SECRET_KEY = "your-secret-key-for-byh-app"

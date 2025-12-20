@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from decimal import Decimal
 from datetime import datetime
-from .models import UserRole, VentaType
+from models import UserRole, VentaType
 
 # Auth Schemas
 class Token(BaseModel):

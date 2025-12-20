@@ -5,14 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from datetime import timedelta
 
-from .database import engine, Base, get_db
-from .models import User, UserRole, Client, Product, ProductType, ProductQuality, ClientPayment
-from .schemas import (
+from database import engine, Base, get_db
+from models import User, UserRole, Client, Product, ProductType, ProductQuality, ClientPayment
+from schemas import (
     Token, UserOut, ClientOut, ClientCreate, ClientUpdate, ProductOut, ProductCreate, ProductUpdate,
     ProductTypeOut, ProductTypeCreate, ProductQualityOut, ProductQualityCreate,
     ClientPaymentOut, ClientPaymentCreate
 )
-from .auth import (
+from auth import (
     authenticate_user,
     create_access_token,
     get_current_user,
@@ -21,7 +21,7 @@ from .auth import (
     verify_password,
     get_password_hash
 )
-from .routers import ingresos, ventas
+from routers import ingresos, ventas
 
 app = FastAPI(title="ByH API", redirect_slashes=False)
 

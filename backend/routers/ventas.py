@@ -6,11 +6,14 @@ from sqlalchemy import func, and_
 from typing import List, Optional
 from datetime import datetime, date as date_type
 from decimal import Decimal
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ..database import get_db
-from ..models import User, UserRole, Venta, VentaItem, Client, Product, VentaType
-from ..schemas import VentaCreate, VentaOut
-from ..auth import get_current_user, RoleChecker
+from database import get_db
+from models import User, UserRole, Venta, VentaItem, Client, Product, VentaType
+from schemas import VentaCreate, VentaOut
+from auth import get_current_user, RoleChecker
 
 router = APIRouter(prefix="/ventas", tags=["Ventas"])
 

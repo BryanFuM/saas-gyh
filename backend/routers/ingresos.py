@@ -4,11 +4,14 @@ from sqlalchemy.future import select
 from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ..database import get_db
-from ..models import User, UserRole, Ingreso, Product, InventorySnapshot
-from ..schemas import IngresoCreate, IngresoOut, InventorySnapshotCreate, InventorySnapshotOut, StockOut
-from ..auth import get_current_user, RoleChecker
+from database import get_db
+from models import User, UserRole, Ingreso, Product, InventorySnapshot
+from schemas import IngresoCreate, IngresoOut, InventorySnapshotCreate, InventorySnapshotOut, StockOut
+from auth import get_current_user, RoleChecker
 
 router = APIRouter(prefix="/ingresos", tags=["Ingresos & Stock"])
 
@@ -59,7 +62,7 @@ async def get_ingresos(
     result = await db.execute(query)
     return result.scalars().all()
 
-from ..models import User, UserRole, Ingreso, Product, InventorySnapshot, VentaItem
+from models import User, UserRole, Ingreso, Product, InventorySnapshot, VentaItem
 # ... (existing code)
 @router.get("/stock", response_model=List[StockOut])
 async def get_stock(
