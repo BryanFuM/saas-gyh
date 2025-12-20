@@ -48,10 +48,10 @@ async def startup():
         result = await db.execute(select(User))
         if not result.scalars().first():
             import bcrypt
-            hashed_password = bcrypt.hashpw("admin123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            hashed_pw = bcrypt.hashpw("admin123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
             admin_user = User(
                 username="admin",
-                hashed_password=hashed_password,
+                password_hash=hashed_pw,
                 role=UserRole.ADMIN
             )
             db.add(admin_user)
