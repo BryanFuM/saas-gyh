@@ -78,7 +78,7 @@ export default function PedidosPage() {
           <CardContent className="py-12 text-center">
             <PackageSearch className="h-16 w-16 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-500 text-lg">No hay pedidos pendientes</p>
-            <p className="text-gray-400 text-sm">Los pedidos aparecerán aquí cuando se registren ventas tipo "Pedido"</p>
+            <p className="text-gray-400 text-sm">Los pedidos aparecerán aquí cuando se registren ventas tipo Pedido</p>
           </CardContent>
         </Card>
       ) : (

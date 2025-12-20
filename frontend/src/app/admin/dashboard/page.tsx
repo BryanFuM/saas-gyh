@@ -5,6 +5,7 @@ import { useAuthStore } from '@/store/auth-store';
 import { SalesSummary } from '../components/sales-summary';
 import { calculateNetProfit } from '../components/profit-calculator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { 
   BarChart, 
   Bar, 
