@@ -60,12 +60,12 @@ export default function PedidosPage() {
   };
 
   return (
-    <div className="p-8">
-      <div className="flex items-center gap-3 mb-8">
-        <PackageSearch className="h-8 w-8 text-primary" />
+    <div className="p-4 md:p-8">
+      <div className="flex items-center gap-3 mb-6 md:mb-8">
+        <PackageSearch className="h-6 w-6 md:h-8 md:w-8 text-primary" />
         <div>
-          <h1 className="text-3xl font-bold">Gestión de Pedidos</h1>
-          <p className="text-gray-500">Pedidos pendientes de entrega (ventas a crédito)</p>
+          <h1 className="text-2xl md:text-3xl font-bold">Gestión de Pedidos</h1>
+          <p className="text-sm md:text-base text-gray-500">Pedidos pendientes de entrega</p>
         </div>
       </div>
 
@@ -85,40 +85,40 @@ export default function PedidosPage() {
         <div className="grid gap-4">
           {pedidos.map((pedido) => (
             <Card key={pedido.id}>
-              <CardHeader className="pb-3">
-                <div className="flex justify-between items-start">
+              <CardHeader className="pb-3 p-4 md:p-6">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
                   <div>
-                    <CardTitle className="text-lg">
+                    <CardTitle className="text-base md:text-lg">
                       Pedido #{pedido.id} - {pedido.client_name || 'Sin cliente'}
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="text-xs md:text-sm">
                       {new Date(pedido.created_at).toLocaleString('es-PE')}
                     </CardDescription>
                   </div>
                   <Badge variant="secondary">Pendiente</Badge>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-4 md:p-6 pt-0">
                 <div className="space-y-2 mb-4">
                   {pedido.items.map((item) => (
-                    <div key={item.id} className="flex justify-between text-sm">
+                    <div key={item.id} className="flex justify-between text-xs md:text-sm">
                       <span>Producto #{item.product_id} x {item.quantity_javas} javas</span>
                       <span>S/. {(item.quantity_javas * item.unit_sale_price).toFixed(2)}</span>
                     </div>
                   ))}
                 </div>
-                <div className="flex justify-between items-center pt-4 border-t">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-4 border-t">
                   <div>
-                    <span className="text-lg font-bold">Total: S/. {Number(pedido.total_amount).toFixed(2)}</span>
+                    <span className="text-base md:text-lg font-bold">Total: S/. {Number(pedido.total_amount).toFixed(2)}</span>
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm">
-                      <Phone className="h-4 w-4 mr-2" />
-                      Contactar
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <Button variant="outline" size="sm" className="flex-1 sm:flex-none">
+                      <Phone className="h-4 w-4 mr-1 md:mr-2" />
+                      <span className="hidden sm:inline">Contactar</span>
                     </Button>
-                    <Button size="sm" onClick={() => markAsDelivered(pedido.id)}>
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Marcar Entregado
+                    <Button size="sm" onClick={() => markAsDelivered(pedido.id)} className="flex-1 sm:flex-none">
+                      <CheckCircle className="h-4 w-4 mr-1 md:mr-2" />
+                      <span className="hidden sm:inline">Marcar</span> Entregado
                     </Button>
                   </div>
                 </div>

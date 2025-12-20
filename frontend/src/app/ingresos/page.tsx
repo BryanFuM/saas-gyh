@@ -135,28 +135,28 @@ export default function IngresosPage() {
   };
 
   return (
-    <div className="p-8">
-      <div className="flex items-center gap-3 mb-8">
-        <Truck className="h-8 w-8 text-primary" />
+    <div className="p-4 md:p-8">
+      <div className="flex items-center gap-3 mb-6 md:mb-8">
+        <Truck className="h-6 w-6 md:h-8 md:w-8 text-primary" />
         <div>
-          <h1 className="text-3xl font-bold">Ingreso de Mercadería</h1>
-          <p className="text-gray-500">Registra la llegada de nuevos productos</p>
+          <h1 className="text-2xl md:text-3xl font-bold">Ingreso de Mercadería</h1>
+          <p className="text-sm md:text-base text-gray-500">Registra la llegada de nuevos productos</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
         {/* Form */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+          <CardHeader className="p-4 md:p-6">
+            <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
               <Plus className="h-5 w-5" />
               Nuevo Ingreso
             </CardTitle>
             <CardDescription>Completa los datos del camión y mercadería</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 md:p-6 pt-0 md:pt-0">
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="truckId">ID Camión / Placa</Label>
                   <Input
@@ -195,7 +195,7 @@ export default function IngresosPage() {
                 </Select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="totalKg">Total KG</Label>
                   <Input
@@ -209,7 +209,7 @@ export default function IngresosPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="conversionFactor">Factor Conversión (KG/Java)</Label>
+                  <Label htmlFor="conversionFactor">Factor (KG/Java)</Label>
                   <Input
                     id="conversionFactor"
                     type="number"

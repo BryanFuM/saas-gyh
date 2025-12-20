@@ -68,14 +68,14 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
-      <Card className="w-[400px]">
-        <CardHeader>
-          <CardTitle className="text-2xl font-bold text-center">ByH - Inventario</CardTitle>
-          <CardDescription className="text-center">Ingresa tus credenciales para continuar</CardDescription>
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
+      <Card className="w-full max-w-[400px]">
+        <CardHeader className="p-4 md:p-6">
+          <CardTitle className="text-xl md:text-2xl font-bold text-center">ByH - Inventario</CardTitle>
+          <CardDescription className="text-center text-sm">Ingresa tus credenciales para continuar</CardDescription>
         </CardHeader>
         <form onSubmit={handleLogin}>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 p-4 md:p-6 pt-0 md:pt-0">
             <div className="space-y-2">
               <Label htmlFor="username">Usuario</Label>
               <Input 

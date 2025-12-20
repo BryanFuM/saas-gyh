@@ -13,16 +13,16 @@ export default function VentasPage() {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Módulo de Ventas</h1>
-        <p className="text-muted-foreground">Gestiona ventas de caja y pedidos a crédito.</p>
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Módulo de Ventas</h1>
+        <p className="text-sm md:text-base text-muted-foreground">Gestiona ventas de caja y pedidos a crédito.</p>
       </div>
 
       <Tabs defaultValue="nueva" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="nueva">Nueva Venta</TabsTrigger>
-          <TabsTrigger value="hoy">Ventas de Hoy</TabsTrigger>
+        <TabsList className="w-full md:w-auto">
+          <TabsTrigger value="nueva" className="flex-1 md:flex-none">Nueva Venta</TabsTrigger>
+          <TabsTrigger value="hoy" className="flex-1 md:flex-none">Ventas de Hoy</TabsTrigger>
         </TabsList>
         
         <TabsContent value="nueva" className="space-y-4">

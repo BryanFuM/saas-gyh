@@ -249,22 +249,22 @@ export default function ProductosPage() {
   const isAdmin = user?.role === 'ADMIN';
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 md:p-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 md:mb-8">
         <div className="flex items-center gap-3">
-          <Package className="h-8 w-8 text-primary" />
+          <Package className="h-6 w-6 md:h-8 md:w-8 text-primary" />
           <div>
-            <h1 className="text-3xl font-bold">Productos</h1>
-            <p className="text-gray-500">Catálogo de productos disponibles</p>
+            <h1 className="text-2xl md:text-3xl font-bold">Productos</h1>
+            <p className="text-sm md:text-base text-gray-500">Catálogo de productos disponibles</p>
           </div>
         </div>
 
         {isAdmin && (
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <Link href="/configuracion">
-              <Button variant="outline">
+              <Button variant="outline" className="w-full sm:w-auto">
                 <Settings className="h-4 w-4 mr-2" />
-                Configurar Tipos
+                <span className="hidden sm:inline">Configurar</span> Tipos
               </Button>
             </Link>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

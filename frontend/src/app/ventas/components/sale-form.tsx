@@ -215,25 +215,25 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <Tabs value={mode} onValueChange={(v) => setMode(v as any)} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="PEDIDO">Venta Pedido (Crédito)</TabsTrigger>
-          <TabsTrigger value="CAJA">Venta Caja (Contado)</TabsTrigger>
+          <TabsTrigger value="PEDIDO" className="text-xs md:text-sm">Pedido (Crédito)</TabsTrigger>
+          <TabsTrigger value="CAJA" className="text-xs md:text-sm">Caja (Contado)</TabsTrigger>
         </TabsList>
 
         <Card className="mt-4">
-          <CardHeader>
-            <CardTitle className="flex justify-between items-center">
-              <span>Nueva Venta - {mode}</span>
+          <CardHeader className="p-4 md:p-6">
+            <CardTitle className="flex flex-col md:flex-row md:justify-between md:items-center gap-2">
+              <span className="text-lg md:text-xl">Nueva Venta - {mode}</span>
               {mode === 'PEDIDO' && selectedClient && (
-                <Badge variant="destructive" className="text-lg px-4 py-1">
+                <Badge variant="destructive" className="text-sm md:text-lg px-3 py-1 w-fit">
                   Deuda: S/ {parseFloat(selectedClient.current_debt).toFixed(2)}
                 </Badge>
               )}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-4 md:space-y-6 p-4 md:p-6">
             {mode === 'PEDIDO' && (
               <div className="space-y-2">
                 <Label>Cliente</Label>
@@ -280,16 +280,16 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
 
             <div className="space-y-4">
               <div className="flex justify-between items-center">
-                <Label className="text-lg font-semibold">Productos</Label>
+                <Label className="text-base md:text-lg font-semibold">Productos</Label>
                 <Button type="button" variant="outline" size="sm" onClick={addItem}>
-                  <Plus className="h-4 w-4 mr-2" /> Agregar Fila
+                  <Plus className="h-4 w-4 mr-1 md:mr-2" /> <span className="hidden sm:inline">Agregar</span>
                 </Button>
               </div>
 
               {items.map((item, index) => (
-                <div key={index} className="flex gap-4 items-end border-b pb-4">
+                <div key={index} className="flex flex-col md:flex-row gap-3 md:gap-4 md:items-end border-b pb-4">
                   <div className="flex-1 space-y-2">
-                    <Label>Producto</Label>
+                    <Label className="text-sm">Producto</Label>
                     <Select 
                       value={item.product_id.toString()} 
                       onValueChange={(v) => updateItem(index, 'product_id', parseInt(v))}
@@ -314,20 +314,21 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
                       </p>
                     )}
                   </div>
-                  <div className="w-24 space-y-2">
-                    <Label>Javas</Label>
-                    <Input 
-                      type="number" 
-                      value={item.quantity_javas} 
-                      onChange={(e) => updateItem(index, 'quantity_javas', parseFloat(e.target.value))}
-                    />
-                  </div>
-                  <div className="w-32 space-y-2">
-                    <Label>Precio U.</Label>
-                    <Input 
-                      type="number" 
-                      step="0.1"
-                      value={item.unit_sale_price} 
+                  <div className="flex gap-3 md:gap-4">
+                    <div className="flex-1 md:w-24 space-y-2">
+                      <Label className="text-sm">Javas</Label>
+                      <Input 
+                        type="number" 
+                        value={item.quantity_javas} 
+                        onChange={(e) => updateItem(index, 'quantity_javas', parseFloat(e.target.value))}
+                      />
+                    </div>
+                    <div className="flex-1 md:w-32 space-y-2">
+                      <Label className="text-sm">Precio U.</Label>
+                      <Input 
+                        type="number" 
+                        step="0.1"
+                        value={item.unit_sale_price} 
                       onChange={(e) => updateItem(index, 'unit_sale_price', parseFloat(e.target.value))}
                     />
                   </div>
