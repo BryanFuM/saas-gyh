@@ -11,7 +11,7 @@ export const TicketTemplate = React.forwardRef<HTMLDivElement, TicketTemplatePro
   return (
     <div ref={ref} className="p-8 bg-white text-black font-mono text-sm w-[80mm]">
       <div className="text-center border-b pb-4 mb-4">
-        <h1 className="text-xl font-bold">ByH - Inventario</h1>
+        <h1 className="text-xl font-bold">Agroinversiones Beto</h1>
         <p>Venta Mayorista</p>
         <p>{new Date(sale.date).toLocaleString()}</p>
       </div>
@@ -67,7 +67,7 @@ export const TicketTemplate = React.forwardRef<HTMLDivElement, TicketTemplatePro
 
       <div className="mt-8 text-center text-xs border-t pt-4">
         <p>¡Gracias por su compra!</p>
-        <p>ByH - Calidad y Confianza</p>
+        <p>Agroinversiones Beto - Calidad y Confianza</p>
       </div>
     </div>
   );

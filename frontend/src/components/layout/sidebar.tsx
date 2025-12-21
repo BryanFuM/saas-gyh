@@ -101,7 +101,7 @@ export function Sidebar() {
   const SidebarContent = () => (
     <>
       <div className="p-4 md:p-6">
-        <h1 className="text-xl md:text-2xl font-bold text-primary">ByH App</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-primary">Agroinversiones Beto</h1>
         <p className="text-xs md:text-sm text-gray-500 mt-1">{user.username} ({user.role})</p>
       </div>
       
@@ -141,7 +141,7 @@ export function Sidebar() {
     <>
       {/* Mobile Header */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-white border-b px-4 py-3 flex items-center justify-between">
-        <h1 className="text-lg font-bold text-primary">ByH App</h1>
+        <h1 className="text-lg font-bold text-primary">Agroinversiones Beto</h1>
         <Button
           variant="ghost"
           size="icon"

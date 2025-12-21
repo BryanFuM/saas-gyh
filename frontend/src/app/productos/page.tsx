@@ -399,25 +399,23 @@ export default function ProductosPage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Tipo</Label>
-                        <SearchableSelect
-                          options={typeOptions}
+                        <Label htmlFor="type">Tipo</Label>
+                        <Input
+                          id="type"
                           value={type}
-                          onSelect={(val) => setType(val as string || '')}
-                          placeholder="Seleccionar tipo..."
-                          searchPlaceholder="Buscar tipo..."
-                          emptyMessage="No hay tipos. Créalos en la pestaña Tipos."
+                          onChange={(e) => setType(e.target.value)}
+                          placeholder="Ej: Kion, Cúrcuma, etc."
+                          required
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Calidad</Label>
-                        <SearchableSelect
-                          options={qualityOptions}
+                        <Label htmlFor="quality">Calidad</Label>
+                        <Input
+                          id="quality"
                           value={quality}
-                          onSelect={(val) => setQuality(val as string || '')}
-                          placeholder="Seleccionar calidad..."
-                          searchPlaceholder="Buscar calidad..."
-                          emptyMessage="No hay calidades. Créalas en la pestaña Calidades."
+                          onChange={(e) => setQuality(e.target.value)}
+                          placeholder="Ej: Primera, Segunda, etc."
+                          required
                         />
                       </div>
                       <div className="space-y-2">
@@ -445,7 +443,7 @@ export default function ProductosPage() {
                       <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                         Cancelar
                       </Button>
-                      <Button type="submit" disabled={!type || !quality}>
+                      <Button type="submit" disabled={!name || !type || !quality}>
                         Guardar Producto
                       </Button>
                     </DialogFooter>
@@ -649,25 +647,23 @@ export default function ProductosPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Tipo</Label>
-                <SearchableSelect
-                  options={typeOptions}
+                <Label htmlFor="editType">Tipo</Label>
+                <Input
+                  id="editType"
                   value={editType}
-                  onSelect={(val) => setEditType(val as string || '')}
-                  placeholder="Seleccionar tipo..."
-                  searchPlaceholder="Buscar tipo..."
-                  emptyMessage="No hay tipos disponibles"
+                  onChange={(e) => setEditType(e.target.value)}
+                  placeholder="Ej: Kion, Cúrcuma, etc."
+                  required
                 />
               </div>
               <div className="space-y-2">
-                <Label>Calidad</Label>
-                <SearchableSelect
-                  options={qualityOptions}
+                <Label htmlFor="editQuality">Calidad</Label>
+                <Input
+                  id="editQuality"
                   value={editQuality}
-                  onSelect={(val) => setEditQuality(val as string || '')}
-                  placeholder="Seleccionar calidad..."
-                  searchPlaceholder="Buscar calidad..."
-                  emptyMessage="No hay calidades disponibles"
+                  onChange={(e) => setEditQuality(e.target.value)}
+                  placeholder="Ej: Primera, Segunda, etc."
+                  required
                 />
               </div>
               <div className="space-y-2">

@@ -58,7 +58,7 @@ export default function HomePage() {
     <div className="p-4 md:p-8">
       <div className="mb-6 md:mb-8">
         <h1 className="text-2xl md:text-3xl font-bold">Bienvenido, {user.username}</h1>
-        <p className="text-sm md:text-base text-gray-500">Panel de control - Sistema ByH</p>
+        <p className="text-sm md:text-base text-gray-500">Panel de control - Agroinversiones Beto</p>
       </div>
 
       {/* Quick Stats */}

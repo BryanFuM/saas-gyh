@@ -330,10 +330,10 @@ export default function IngresosPage() {
                     <div className="flex items-center gap-2 text-gray-600">
                       <span>S/. {costPerKg.toFixed(2)}/kg</span>
                       <ArrowRight className="h-4 w-4" />
-                      <span className="font-medium text-primary">S/. {costPerJava.toFixed(2)}/java</span>
+                      <span className="text-gray-600">S/. {costPerJava.toFixed(2)}/java</span>
                     </div>
                     {totalKg && (
-                      <p className="text-gray-500">
+                      <p className="font-medium text-primary">
                         Costo Total: S/. {(costPerJava * parseFloat(calculatedJavas)).toFixed(2)}
                       </p>
                     )}

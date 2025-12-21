@@ -33,7 +33,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ProductSelect, ClientSelect } from '@/components/ui/searchable-select';
-import { Check, ChevronsUpDown, Plus, Trash2, Printer, Save, Scale } from 'lucide-react';
+import { Check, ChevronsUpDown, Plus, Trash2, Printer, Save, Scale, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TicketTemplate } from './ticket-template';
 import { useReactToPrint } from 'react-to-print';
@@ -81,6 +81,12 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [shouldPrintAfterSave, setShouldPrintAfterSave] = useState(false);
   
+  // New client modal state
+  const [showNewClientModal, setShowNewClientModal] = useState(false);
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientWhatsapp, setNewClientWhatsapp] = useState('');
+  const [isCreatingClient, setIsCreatingClient] = useState(false);
+  
   const { token } = useAuthStore();
   const { toast } = useToast();
   const ticketRef = useRef<HTMLDivElement>(null);
@@ -102,6 +108,46 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
       });
       if (res.ok) setClients(await res.json());
     } catch (error) {}
+  };
+
+  const createNewClient = async () => {
+    if (!newClientName.trim()) {
+      toast({ variant: "destructive", title: "Error", description: "El nombre es requerido" });
+      return;
+    }
+    
+    setIsCreatingClient(true);
+    try {
+      const res = await fetch('/api/python/clients', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({
+          name: newClientName.trim(),
+          whatsapp_number: newClientWhatsapp.trim() || null,
+          current_debt: 0
+        })
+      });
+      
+      if (!res.ok) throw new Error('Error al crear cliente');
+      
+      const newClient = await res.json();
+      
+      // Refresh client list and select the new client
+      await fetchClients();
+      setSelectedClient(newClient);
+      
+      toast({ title: "Éxito", description: `Cliente "${newClientName}" creado` });
+      setShowNewClientModal(false);
+      setNewClientName('');
+      setNewClientWhatsapp('');
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
+    } finally {
+      setIsCreatingClient(false);
+    }
   };
 
   const fetchProducts = async () => {
@@ -162,8 +208,9 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
   };
 
   const calculateItemTotal = (item: SaleItem): number => {
-    const quantityInJavas = getQuantityInJavas(item);
-    return quantityInJavas * item.unit_sale_price;
+    // El subtotal es simplemente cantidad * precio unitario
+    // El precio ya está en la unidad seleccionada (por Java o por KG)
+    return item.quantity * item.unit_sale_price;
   };
 
   const calculateSubtotal = () => {
@@ -296,7 +343,19 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
           <CardContent className="space-y-4 md:space-y-6 p-4 md:p-6">
             {mode === 'PEDIDO' && (
               <div className="space-y-2">
-                <Label>Cliente</Label>
+                <div className="flex justify-between items-center">
+                  <Label>Cliente</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowNewClientModal(true)}
+                    className="text-primary h-8"
+                  >
+                    <UserPlus className="h-4 w-4 mr-1" />
+                    Nuevo Cliente
+                  </Button>
+                </div>
                 <ClientSelect
                   clients={clients}
                   value={selectedClient?.id || null}
@@ -373,7 +432,7 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
                         />
                       </div>
                       <div className="w-28 space-y-2">
-                        <Label className="text-sm">Precio/Java</Label>
+                        <Label className="text-sm">Precio/{item.unit === 'JAVA' ? 'Java' : 'KG'}</Label>
                         <Input 
                           type="number" 
                           step="0.1"
@@ -470,7 +529,7 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
                 <TableRow>
                   <TableHead>Producto</TableHead>
                   <TableHead className="text-right">Cantidad</TableHead>
-                  <TableHead className="text-right">Precio/Java</TableHead>
+                  <TableHead className="text-right">Precio Unit.</TableHead>
                   <TableHead className="text-right">Subtotal</TableHead>
                 </TableRow>
               </TableHeader>
@@ -488,7 +547,9 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
                           </span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">S/ {item.unit_sale_price.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">
+                        S/ {item.unit_sale_price.toFixed(2)}/{item.unit === 'KG' ? 'kg' : 'java'}
+                      </TableCell>
                       <TableCell className="text-right font-medium">S/ {calculateItemTotal(item).toFixed(2)}</TableCell>
                     </TableRow>
                   );
@@ -539,6 +600,47 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
                   Confirmar
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Nuevo Cliente */}
+      <Dialog open={showNewClientModal} onOpenChange={setShowNewClientModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nuevo Cliente</DialogTitle>
+            <DialogDescription>
+              Crear un nuevo cliente rápidamente
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Nombre *</Label>
+              <Input
+                value={newClientName}
+                onChange={(e) => setNewClientName(e.target.value)}
+                placeholder="Nombre del cliente"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>WhatsApp (opcional)</Label>
+              <Input
+                value={newClientWhatsapp}
+                onChange={(e) => setNewClientWhatsapp(e.target.value)}
+                placeholder="+51 999 999 999"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNewClientModal(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={createNewClient} 
+              disabled={isCreatingClient || !newClientName.trim()}
+            >
+              {isCreatingClient ? 'Creando...' : 'Crear Cliente'}
             </Button>
           </DialogFooter>
         </DialogContent>

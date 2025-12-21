@@ -55,7 +55,7 @@ export default function ConfiguracionPage() {
   
   // Business settings (stored in localStorage for MVP)
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings>({
-    company_name: 'ByH Kion',
+    company_name: 'Agroinversiones Beto',
     phone: '',
     whatsapp: '',
     address: '',
@@ -90,7 +90,7 @@ export default function ConfiguracionPage() {
 
   const loadBusinessSettings = () => {
     try {
-      const saved = localStorage.getItem('byh_business_settings');
+      const saved = localStorage.getItem('agrobeto_business_settings');
       if (saved) {
         const parsed = JSON.parse(saved);
         setBusinessSettings(parsed);
@@ -104,7 +104,7 @@ export default function ConfiguracionPage() {
 
   const saveBusinessSettings = () => {
     try {
-      localStorage.setItem('byh_business_settings', JSON.stringify(businessForm));
+      localStorage.setItem('agrobeto_business_settings', JSON.stringify(businessForm));
       setBusinessSettings(businessForm);
       setIsEditingBusiness(false);
       toast({ title: "Guardado", description: "Configuración del negocio actualizada" });
@@ -275,7 +275,7 @@ export default function ConfiguracionPage() {
                         <Input
                           value={businessForm.company_name}
                           onChange={(e) => setBusinessForm({ ...businessForm, company_name: e.target.value })}
-                          placeholder="ByH Kion"
+                          placeholder="Agroinversiones Beto"
                         />
                       </div>
                       <div className="space-y-2">

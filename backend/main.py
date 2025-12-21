@@ -23,7 +23,7 @@ from auth import (
 )
 from routers import ingresos, ventas
 
-app = FastAPI(title="ByH API", redirect_slashes=False)
+app = FastAPI(title="Agroinversiones Beto API", redirect_slashes=False)
 
 # CORS middleware
 app.add_middleware(
