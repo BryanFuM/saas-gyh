@@ -476,6 +476,24 @@ async def delete_product_type(
     await db.commit()
     return {"message": "Tipo de producto eliminado"}
 
+
+@app.get("/config/product-types/{type_id}/usage-count", tags=["Config"])
+async def get_product_type_usage_count(
+    type_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Obtener cantidad de productos que usan este tipo."""
+    result = await db.execute(select(ProductType).where(ProductType.id == type_id))
+    db_type = result.scalars().first()
+    if not db_type:
+        raise HTTPException(status_code=404, detail="Tipo de producto no encontrado")
+    
+    # Count products using this type name
+    count_result = await db.execute(select(Product).where(Product.type == db_type.name))
+    count = len(count_result.scalars().all())
+    return {"count": count}
+
 # Product Qualities (Configuración)
 @app.get("/config/product-qualities", response_model=list[ProductQualityOut], tags=["Config"])
 async def get_product_qualities(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -512,4 +530,22 @@ async def delete_product_quality(
     await db.delete(db_quality)
     await db.commit()
     return {"message": "Calidad de producto eliminada"}
+
+
+@app.get("/config/product-qualities/{quality_id}/usage-count", tags=["Config"])
+async def get_product_quality_usage_count(
+    quality_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Obtener cantidad de productos que usan esta calidad."""
+    result = await db.execute(select(ProductQuality).where(ProductQuality.id == quality_id))
+    db_quality = result.scalars().first()
+    if not db_quality:
+        raise HTTPException(status_code=404, detail="Calidad de producto no encontrada")
+    
+    # Count products using this quality name
+    count_result = await db.execute(select(Product).where(Product.quality == db_quality.name))
+    count = len(count_result.scalars().all())
+    return {"count": count}
 

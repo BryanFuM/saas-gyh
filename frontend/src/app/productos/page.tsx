@@ -7,10 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SearchableSelect } from '@/components/ui/searchable-select';
+import { CreatableSelect } from '@/components/ui/creatable-select';
 import { useToast } from '@/hooks/use-toast';
-import { Package, Plus, Edit, Trash2, Tag, Star, Scale } from 'lucide-react';
+import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct } from '@/hooks/use-products';
+import { useProductTypes, useCreateProductType } from '@/hooks/use-product-types';
+import { useProductQualities, useCreateProductQuality } from '@/hooks/use-product-qualities';
+import { ManageConfigModal } from './components/manage-config-modal';
+import { Product as ProductApi, ProductType, ProductQuality } from '@/lib/api';
+import { Package, Plus, Edit, Trash2, Scale, Settings } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -31,26 +35,27 @@ interface Product {
   conversion_factor: number;
 }
 
-interface ProductType {
-  id: number;
-  name: string;
-}
-
-interface ProductQuality {
-  id: number;
-  name: string;
-}
-
 export default function ProductosPage() {
-  const { token, user, isHydrated, hydrate } = useAuthStore();
+  const { user, isHydrated, hydrate } = useAuthStore();
   const { toast } = useToast();
   
-  const [activeTab, setActiveTab] = useState('productos');
-  const [products, setProducts] = useState<Product[]>([]);
-  const [types, setTypes] = useState<ProductType[]>([]);
-  const [qualities, setQualities] = useState<ProductQuality[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // Data queries
+  const { data: products = [], isLoading: productsLoading } = useProducts();
+  const { data: types = [], isLoading: typesLoading } = useProductTypes();
+  const { data: qualities = [], isLoading: qualitiesLoading } = useProductQualities();
+  
+  // Mutations
+  const createProductMutation = useCreateProduct();
+  const updateProductMutation = useUpdateProduct();
+  const deleteProductMutation = useDeleteProduct();
+  const createTypeMutation = useCreateProductType();
+  const createQualityMutation = useCreateProductQuality();
+  
+  // Dialog states
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   
   // Form state
   const [name, setName] = useState('');
@@ -59,7 +64,6 @@ export default function ProductosPage() {
   const [conversionFactor, setConversionFactor] = useState(20);
   
   // Edit state
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editName, setEditName] = useState('');
   const [editType, setEditType] = useState('');
@@ -67,41 +71,11 @@ export default function ProductosPage() {
   const [editConversionFactor, setEditConversionFactor] = useState(20);
   
   // Delete state
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
-  
-  // Type/Quality form state
-  const [newType, setNewType] = useState('');
-  const [newQuality, setNewQuality] = useState('');
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
-
-  const fetchData = async () => {
-    try {
-      const [productsRes, typesRes, qualitiesRes] = await Promise.all([
-        fetch('/api/python/products', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/python/config/product-types', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/python/config/product-qualities', { headers: { 'Authorization': `Bearer ${token}` } }),
-      ]);
-      
-      if (productsRes.ok) setProducts(await productsRes.json());
-      if (typesRes.ok) setTypes(await typesRes.json());
-      if (qualitiesRes.ok) setQualities(await qualitiesRes.json());
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (token) {
-      fetchData();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
 
   const resetProductForm = () => {
     setName('');
@@ -114,24 +88,12 @@ export default function ProductosPage() {
     e.preventDefault();
 
     try {
-      const response = await fetch('/api/python/products', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name,
-          type,
-          quality,
-          conversion_factor: conversionFactor,
-        }),
+      await createProductMutation.mutateAsync({
+        name,
+        type,
+        quality,
+        conversion_factor: conversionFactor,
       });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Error al crear producto');
-      }
 
       toast({
         title: "Éxito",
@@ -140,7 +102,6 @@ export default function ProductosPage() {
 
       resetProductForm();
       setIsDialogOpen(false);
-      fetchData();
     } catch (error: any) {
       toast({
         title: "Error",
@@ -164,24 +125,15 @@ export default function ProductosPage() {
     if (!editingProduct) return;
 
     try {
-      const response = await fetch(`/api/python/products/${editingProduct.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
+      await updateProductMutation.mutateAsync({
+        id: editingProduct.id,
+        data: {
           name: editName,
           type: editType,
           quality: editQuality,
           conversion_factor: editConversionFactor,
-        }),
+        },
       });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Error al actualizar producto');
-      }
 
       toast({
         title: "Éxito",
@@ -190,7 +142,6 @@ export default function ProductosPage() {
 
       setIsEditDialogOpen(false);
       setEditingProduct(null);
-      fetchData();
     } catch (error: any) {
       toast({
         title: "Error",
@@ -209,17 +160,7 @@ export default function ProductosPage() {
     if (!deletingProduct) return;
 
     try {
-      const response = await fetch(`/api/python/products/${deletingProduct.id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Error al eliminar producto');
-      }
+      await deleteProductMutation.mutateAsync(deletingProduct.id);
 
       toast({
         title: "Éxito",
@@ -228,7 +169,6 @@ export default function ProductosPage() {
 
       setIsDeleteDialogOpen(false);
       setDeletingProduct(null);
-      fetchData();
     } catch (error: any) {
       toast({
         title: "Error",
@@ -251,83 +191,19 @@ export default function ProductosPage() {
     }
   };
 
-  // Types CRUD
-  const addType = async () => {
-    if (!newType.trim()) return;
+  // Prepare options for CreatableSelect
+  const typeOptions = types.map((t: ProductType) => ({ value: t.name, label: t.name }));
+  const qualityOptions = qualities.map((q: ProductQuality) => ({ value: q.name, label: q.name }));
 
-    try {
-      const response = await fetch('/api/python/config/product-types', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ name: newType }),
-      });
-
-      if (!response.ok) throw new Error('Error al crear tipo');
-
-      toast({ title: "Éxito", description: "Tipo agregado" });
-      setNewType('');
-      fetchData();
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
+  // Handler to create new type inline
+  const handleCreateType = async (name: string) => {
+    await createTypeMutation.mutateAsync(name);
   };
 
-  const deleteType = async (id: number) => {
-    try {
-      await fetch(`/api/python/config/product-types/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      toast({ title: "Éxito", description: "Tipo eliminado" });
-      fetchData();
-    } catch (error) {
-      console.error('Error:', error);
-    }
+  // Handler to create new quality inline
+  const handleCreateQuality = async (name: string) => {
+    await createQualityMutation.mutateAsync(name);
   };
-
-  // Qualities CRUD
-  const addQuality = async () => {
-    if (!newQuality.trim()) return;
-
-    try {
-      const response = await fetch('/api/python/config/product-qualities', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ name: newQuality }),
-      });
-
-      if (!response.ok) throw new Error('Error al crear calidad');
-
-      toast({ title: "Éxito", description: "Calidad agregada" });
-      setNewQuality('');
-      fetchData();
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
-  };
-
-  const deleteQuality = async (id: number) => {
-    try {
-      await fetch(`/api/python/config/product-qualities/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      toast({ title: "Éxito", description: "Calidad eliminada" });
-      fetchData();
-    } catch (error) {
-      console.error('Error:', error);
-    }
-  };
-
-  // Prepare options for SearchableSelect
-  const typeOptions = types.map(t => ({ value: t.name, label: t.name }));
-  const qualityOptions = qualities.map(q => ({ value: q.name, label: q.name }));
 
   if (!isHydrated) {
     return (
@@ -338,6 +214,7 @@ export default function ProductosPage() {
   }
 
   const isAdmin = user?.role === 'ADMIN';
+  const isLoading = productsLoading || typesLoading || qualitiesLoading;
 
   return (
     <div className="p-4 md:p-8">
@@ -345,36 +222,26 @@ export default function ProductosPage() {
         <div className="flex items-center gap-3">
           <Package className="h-6 w-6 md:h-8 md:w-8 text-primary" />
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold">Catálogo</h1>
-            <p className="text-sm md:text-base text-gray-500">Gestiona productos, tipos y calidades</p>
+            <h1 className="text-2xl md:text-3xl font-bold">Productos</h1>
+            <p className="text-sm md:text-base text-gray-500">Gestiona el catálogo de productos</p>
           </div>
         </div>
-      </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-6">
-          <TabsTrigger value="productos" className="flex items-center gap-2">
-            <Package className="h-4 w-4" />
-            <span className="hidden sm:inline">Productos</span>
-          </TabsTrigger>
-          <TabsTrigger value="tipos" className="flex items-center gap-2">
-            <Tag className="h-4 w-4" />
-            <span className="hidden sm:inline">Tipos</span>
-          </TabsTrigger>
-          <TabsTrigger value="calidades" className="flex items-center gap-2">
-            <Star className="h-4 w-4" />
-            <span className="hidden sm:inline">Calidades</span>
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Products Tab */}
-        <TabsContent value="productos">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Lista de Productos</h2>
-            {isAdmin && (
+        <div className="flex gap-2">
+          {isAdmin && (
+            <>
+              <Button 
+                variant="outline" 
+                onClick={() => setIsConfigModalOpen(true)}
+                className="flex items-center gap-2"
+              >
+                <Settings className="h-4 w-4" />
+                <span className="hidden sm:inline">Tipos/Calidades</span>
+              </Button>
+              
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button disabled={types.length === 0 || qualities.length === 0}>
+                  <Button>
                     <Plus className="h-4 w-4 mr-2" />
                     Nuevo Producto
                   </Button>
@@ -383,7 +250,7 @@ export default function ProductosPage() {
                   <DialogHeader>
                     <DialogTitle>Registrar Nuevo Producto</DialogTitle>
                     <DialogDescription>
-                      Define el nombre, tipo, calidad y factor de conversión del producto
+                      Define el nombre, tipo, calidad y factor de conversión. Puedes crear nuevos tipos y calidades escribiendo en el selector.
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleSubmit}>
@@ -400,22 +267,28 @@ export default function ProductosPage() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="type">Tipo</Label>
-                        <Input
-                          id="type"
+                        <CreatableSelect
+                          options={typeOptions}
                           value={type}
-                          onChange={(e) => setType(e.target.value)}
-                          placeholder="Ej: Kion, Cúrcuma, etc."
-                          required
+                          onSelect={(val) => setType(val)}
+                          onCreate={handleCreateType}
+                          placeholder="Seleccionar o crear tipo..."
+                          searchPlaceholder="Buscar o crear tipo..."
+                          createLabel="Crear tipo"
+                          isLoading={typesLoading}
                         />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="quality">Calidad</Label>
-                        <Input
-                          id="quality"
+                        <CreatableSelect
+                          options={qualityOptions}
                           value={quality}
-                          onChange={(e) => setQuality(e.target.value)}
-                          placeholder="Ej: Primera, Segunda, etc."
-                          required
+                          onSelect={(val) => setQuality(val)}
+                          onCreate={handleCreateQuality}
+                          placeholder="Seleccionar o crear calidad..."
+                          searchPlaceholder="Buscar o crear calidad..."
+                          createLabel="Crear calidad"
+                          isLoading={qualitiesLoading}
                         />
                       </div>
                       <div className="space-y-2">
@@ -443,188 +316,84 @@ export default function ProductosPage() {
                       <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                         Cancelar
                       </Button>
-                      <Button type="submit" disabled={!name || !type || !quality}>
-                        Guardar Producto
+                      <Button 
+                        type="submit" 
+                        disabled={!name || !type || !quality || createProductMutation.isPending}
+                      >
+                        {createProductMutation.isPending ? 'Guardando...' : 'Guardar Producto'}
                       </Button>
                     </DialogFooter>
                   </form>
                 </DialogContent>
               </Dialog>
-            )}
-          </div>
-
-          {isAdmin && (types.length === 0 || qualities.length === 0) && (
-            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg mb-4">
-              <p className="text-sm">
-                ⚠️ Debes configurar al menos un tipo y una calidad antes de crear productos.{' '}
-                <button onClick={() => setActiveTab('tipos')} className="underline font-medium">
-                  Ir a Tipos
-                </button>
-              </p>
-            </div>
+            </>
           )}
+        </div>
+      </div>
 
-          {isLoading ? (
-            <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-            </div>
-          ) : products.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Package className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500 text-lg">No hay productos registrados</p>
-                <p className="text-gray-400 text-sm">
-                  {isAdmin 
-                    ? 'Agrega tu primer producto usando el botón "Nuevo Producto"' 
-                    : 'Contacta al administrador para agregar productos'}
-                </p>
+      {/* Products Grid */}
+      {isLoading ? (
+        <div className="flex justify-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        </div>
+      ) : products.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Package className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg">No hay productos registrados</p>
+            <p className="text-gray-400 text-sm">
+              {isAdmin 
+                ? 'Agrega tu primer producto usando el botón "Nuevo Producto"' 
+                : 'Contacta al administrador para agregar productos'}
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {products.map((product: Product) => (
+            <Card key={product.id}>
+              <CardHeader className="pb-3">
+                <div className="flex justify-between items-start">
+                  <CardTitle className="text-lg">{product.name}</CardTitle>
+                  <Badge className={getQualityColor(product.quality)}>
+                    {product.quality}
+                  </Badge>
+                </div>
+                <CardDescription>
+                  Tipo: {product.type}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex justify-between items-center">
+                  <div className="text-sm text-gray-500">
+                    <p>ID: #{product.id}</p>
+                    <p className="flex items-center gap-1">
+                      <Scale className="h-3 w-3" />
+                      {product.conversion_factor || 20} kg/java
+                    </p>
+                  </div>
+                  {isAdmin && (
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(product)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => openDeleteDialog(product)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {products.map((product) => (
-                <Card key={product.id}>
-                  <CardHeader className="pb-3">
-                    <div className="flex justify-between items-start">
-                      <CardTitle className="text-lg">{product.name}</CardTitle>
-                      <Badge className={getQualityColor(product.quality)}>
-                        {product.quality}
-                      </Badge>
-                    </div>
-                    <CardDescription>
-                      Tipo: {product.type}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex justify-between items-center">
-                      <div className="text-sm text-gray-500">
-                        <p>ID: #{product.id}</p>
-                        <p className="flex items-center gap-1">
-                          <Scale className="h-3 w-3" />
-                          {product.conversion_factor || 20} kg/java
-                        </p>
-                      </div>
-                      {isAdmin && (
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(product)}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => openDeleteDialog(product)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
+          ))}
+        </div>
+      )}
 
-        {/* Types Tab */}
-        <TabsContent value="tipos">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Tag className="h-5 w-5" />
-                Tipos de Producto
-              </CardTitle>
-              <CardDescription>
-                Define los tipos de producto disponibles (ej: Kion, Cúrcuma, Jengibre)
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isAdmin && (
-                <div className="flex gap-2 mb-4">
-                  <Input
-                    placeholder="Nuevo tipo..."
-                    value={newType}
-                    onChange={(e) => setNewType(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && addType()}
-                  />
-                  <Button onClick={addType} disabled={!newType.trim()}>
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-              
-              <div className="space-y-2">
-                {types.length === 0 ? (
-                  <p className="text-gray-500 text-center py-4">No hay tipos definidos</p>
-                ) : (
-                  types.map((type) => (
-                    <div key={type.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <Tag className="h-4 w-4 text-muted-foreground" />
-                        <span>{type.name}</span>
-                      </div>
-                      {isAdmin && (
-                        <Button variant="ghost" size="sm" onClick={() => deleteType(type.id)}>
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Qualities Tab */}
-        <TabsContent value="calidades">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Star className="h-5 w-5" />
-                Calidades de Producto
-              </CardTitle>
-              <CardDescription>
-                Define las calidades disponibles (ej: Primera, Segunda, Tercera)
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isAdmin && (
-                <div className="flex gap-2 mb-4">
-                  <Input
-                    placeholder="Nueva calidad..."
-                    value={newQuality}
-                    onChange={(e) => setNewQuality(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && addQuality()}
-                  />
-                  <Button onClick={addQuality} disabled={!newQuality.trim()}>
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-              
-              <div className="space-y-2">
-                {qualities.length === 0 ? (
-                  <p className="text-gray-500 text-center py-4">No hay calidades definidas</p>
-                ) : (
-                  qualities.map((quality) => (
-                    <div key={quality.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <Star className="h-4 w-4 text-muted-foreground" />
-                        <span>{quality.name}</span>
-                        <Badge className={getQualityColor(quality.name)} variant="secondary">
-                          Vista previa
-                        </Badge>
-                      </div>
-                      {isAdmin && (
-                        <Button variant="ghost" size="sm" onClick={() => deleteQuality(quality.id)}>
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      {/* Manage Config Modal */}
+      <ManageConfigModal 
+        open={isConfigModalOpen} 
+        onOpenChange={setIsConfigModalOpen} 
+      />
 
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
@@ -632,7 +401,7 @@ export default function ProductosPage() {
           <DialogHeader>
             <DialogTitle>Editar Producto</DialogTitle>
             <DialogDescription>
-              Modifica los datos del producto
+              Modifica los datos del producto. Puedes crear nuevos tipos y calidades escribiendo en el selector.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleEdit}>
@@ -648,22 +417,28 @@ export default function ProductosPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="editType">Tipo</Label>
-                <Input
-                  id="editType"
+                <CreatableSelect
+                  options={typeOptions}
                   value={editType}
-                  onChange={(e) => setEditType(e.target.value)}
-                  placeholder="Ej: Kion, Cúrcuma, etc."
-                  required
+                  onSelect={(val) => setEditType(val)}
+                  onCreate={handleCreateType}
+                  placeholder="Seleccionar o crear tipo..."
+                  searchPlaceholder="Buscar o crear tipo..."
+                  createLabel="Crear tipo"
+                  isLoading={typesLoading}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="editQuality">Calidad</Label>
-                <Input
-                  id="editQuality"
+                <CreatableSelect
+                  options={qualityOptions}
                   value={editQuality}
-                  onChange={(e) => setEditQuality(e.target.value)}
-                  placeholder="Ej: Primera, Segunda, etc."
-                  required
+                  onSelect={(val) => setEditQuality(val)}
+                  onCreate={handleCreateQuality}
+                  placeholder="Seleccionar o crear calidad..."
+                  searchPlaceholder="Buscar o crear calidad..."
+                  createLabel="Crear calidad"
+                  isLoading={qualitiesLoading}
                 />
               </div>
               <div className="space-y-2">
@@ -688,7 +463,9 @@ export default function ProductosPage() {
               <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button type="submit">Guardar Cambios</Button>
+              <Button type="submit" disabled={updateProductMutation.isPending}>
+                {updateProductMutation.isPending ? 'Guardando...' : 'Guardar Cambios'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -705,8 +482,12 @@ export default function ProductosPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
-              Eliminar
+            <AlertDialogAction 
+              onClick={handleDelete} 
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deleteProductMutation.isPending}
+            >
+              {deleteProductMutation.isPending ? 'Eliminando...' : 'Eliminar'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

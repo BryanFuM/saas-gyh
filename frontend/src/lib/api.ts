@@ -195,6 +195,28 @@ export const api = {
     delete: (id: number) => apiFetch<void>(`/products/${id}`, { method: 'DELETE' }),
   },
 
+  // Product Types (Config)
+  productTypes: {
+    list: () => apiFetch<ProductType[]>('/config/product-types'),
+    create: (name: string) => apiFetch<ProductType>('/config/product-types', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+    delete: (id: number) => apiFetch<void>(`/config/product-types/${id}`, { method: 'DELETE' }),
+    getUsageCount: (id: number) => apiFetch<{ count: number }>(`/config/product-types/${id}/usage-count`),
+  },
+
+  // Product Qualities (Config)
+  productQualities: {
+    list: () => apiFetch<ProductQuality[]>('/config/product-qualities'),
+    create: (name: string) => apiFetch<ProductQuality>('/config/product-qualities', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+    delete: (id: number) => apiFetch<void>(`/config/product-qualities/${id}`, { method: 'DELETE' }),
+    getUsageCount: (id: number) => apiFetch<{ count: number }>(`/config/product-qualities/${id}/usage-count`),
+  },
+
   // Clients
   clients: {
     list: () => apiFetch<Client[]>('/clients'),
@@ -265,6 +287,16 @@ export interface ProductCreate {
   type: string;
   quality: string;
   conversion_factor?: number;
+}
+
+export interface ProductType {
+  id: number;
+  name: string;
+}
+
+export interface ProductQuality {
+  id: number;
+  name: string;
 }
 
 export interface Client {
