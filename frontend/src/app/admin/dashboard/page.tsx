@@ -40,7 +40,7 @@ export default function AdminDashboard() {
       const [salesRes, ingresosRes, stockRes] = await Promise.all([
         fetch('/api/python/ventas', { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch('/api/python/ingresos', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/python/ingresos/stock', { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch('/api/python/ingresos/stock/disponible', { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
 
       if (salesRes.ok) setSales(await salesRes.json());

@@ -1,6 +1,7 @@
 import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import StaticPool
 
 # Use PostgreSQL in production, SQLite for local development
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -14,12 +15,13 @@ if DATABASE_URL:
     
     engine = create_async_engine(DATABASE_URL, echo=False)
 else:
-    # Local development with SQLite
+    # Local development with SQLite - use StaticPool for better async handling
     DATABASE_URL = "sqlite+aiosqlite:///./byh_app.db"
     engine = create_async_engine(
         DATABASE_URL, 
-        echo=True,
-        connect_args={"check_same_thread": False}
+        echo=False,  # Disable SQL echo for performance
+        connect_args={"check_same_thread": False, "timeout": 30},
+        poolclass=StaticPool,  # Single connection pool for SQLite
     )
 
 AsyncSessionLocal = sessionmaker(

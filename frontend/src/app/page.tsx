@@ -28,7 +28,7 @@ export default function HomePage() {
 
   const fetchStock = async () => {
     try {
-      const response = await fetch('/api/python/ingresos/stock', {
+      const response = await fetch('/api/python/ingresos/stock/disponible', {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (response.ok) {

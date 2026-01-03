@@ -70,9 +70,53 @@ class Product(Base):
     conversion_factor = Column(Float, default=20.0, server_default="20.0", nullable=False)  # kg per java
     
     venta_items = relationship("VentaItem", back_populates="product")
-    ingresos = relationship("Ingreso", back_populates="product")
+    ingreso_items = relationship("IngresoItem", back_populates="product")
 
+
+class IngresoLote(Base):
+    """
+    Lote de ingreso de mercadería.
+    Representa un camión que llega con uno o más proveedores.
+    """
+    __tablename__ = "ingreso_lotes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(DateTime(timezone=True), server_default=func.now())
+    truck_id = Column(String, index=True, nullable=False)  # Placa del camión
+    
+    # Relación con items (uno por proveedor-producto)
+    items = relationship("IngresoItem", back_populates="lote", cascade="all, delete-orphan")
+
+
+class IngresoItem(Base):
+    """
+    Item de ingreso por proveedor y producto.
+    Un lote puede tener múltiples items (un proveedor puede traer varios productos).
+    """
+    __tablename__ = "ingreso_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ingreso_lote_id = Column(Integer, ForeignKey("ingreso_lotes.id"), nullable=False)
+    supplier_name = Column(String, nullable=False)  # Nombre del proveedor
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    
+    # Cantidades
+    total_kg = Column(Float, nullable=False)
+    conversion_factor = Column(Float, default=20.0, nullable=False)  # kg por java
+    total_javas = Column(Float, nullable=False)  # Calculado: total_kg / conversion_factor
+    
+    # Costos (siempre almacenados por java para consistencia)
+    cost_per_java = Column(Float, nullable=False)
+    total_cost = Column(Float, nullable=False)  # Calculado: cost_per_java * total_javas
+    
+    # Relaciones
+    lote = relationship("IngresoLote", back_populates="items")
+    product = relationship("Product", back_populates="ingreso_items")
+
+
+# Modelo legacy - mantener para migración si es necesario
 class Ingreso(Base):
+    """DEPRECATED: Usar IngresoLote e IngresoItem en su lugar."""
     __tablename__ = "ingresos"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -84,8 +128,6 @@ class Ingreso(Base):
     conversion_factor = Column(Float, default=20.0, nullable=False)
     total_javas = Column(Float, nullable=False)
     unit_cost_price = Column(Float, nullable=False)  # Always stored per Java
-    
-    product = relationship("Product", back_populates="ingresos")
 
 class Venta(Base):
     __tablename__ = "ventas"
@@ -103,15 +145,26 @@ class Venta(Base):
     items = relationship("VentaItem", back_populates="venta", cascade="all, delete-orphan")
 
 class VentaItem(Base):
+    """
+    Item de una venta.
+    Todas las cantidades se manejan en KG, la conversión a javas se hace internamente.
+    """
     __tablename__ = "venta_items"
 
     id = Column(Integer, primary_key=True, index=True)
     venta_id = Column(Integer, ForeignKey("ventas.id"), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
-    quantity_javas = Column(Float, nullable=False)  # Always stored in javas (calculated if unit is KG)
-    quantity_original = Column(Float, nullable=True)  # Original quantity entered by user
-    unit = Column(String, default="JAVA", server_default="JAVA", nullable=False)  # JAVA or KG
-    unit_sale_price = Column(Numeric(10, 2), nullable=False)
+    
+    # Cantidad en KG (entrada del usuario)
+    quantity_kg = Column(Float, nullable=False)
+    # Cantidad en javas (calculado para stock)
+    quantity_javas = Column(Float, nullable=False)
+    # Factor de conversión usado (para trazabilidad)
+    conversion_factor = Column(Float, nullable=False)
+    # Precio por KG
+    price_per_kg = Column(Numeric(10, 2), nullable=False)
+    # Subtotal (quantity_kg * price_per_kg)
+    subtotal = Column(Numeric(10, 2), nullable=False)
 
     venta = relationship("Venta", back_populates="items")
     product = relationship("Product", back_populates="venta_items")

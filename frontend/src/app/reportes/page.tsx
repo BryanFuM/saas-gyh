@@ -60,7 +60,7 @@ export default function ReportesPage() {
         fetch('/api/python/ventas', { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch('/api/python/ingresos', { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch('/api/python/clients', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/python/ingresos/stock', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/python/ingresos/stock/disponible', { headers: { 'Authorization': `Bearer ${token}` } }),
       ]);
 
       if (ventasRes.ok) setVentas(await ventasRes.json());

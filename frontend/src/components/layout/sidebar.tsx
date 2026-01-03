@@ -10,7 +10,6 @@ import {
   Truck, 
   Users, 
   BarChart3, 
-  PackageSearch,
   LogOut,
   Package,
   Settings,
@@ -50,12 +49,6 @@ const sidebarItems: SidebarItem[] = [
     title: 'Ventas',
     href: '/ventas',
     icon: ShoppingCart,
-    roles: ['ADMIN', 'VENDEDOR'],
-  },
-  {
-    title: 'Gestión Pedidos',
-    href: '/pedidos',
-    icon: PackageSearch,
     roles: ['ADMIN', 'VENDEDOR'],
   },
   {
