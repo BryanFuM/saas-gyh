@@ -36,11 +36,20 @@ class Settings(BaseSettings):
     @classmethod
     def parse_cors_origins(cls, v):
         """Parse CORS_ORIGINS from comma-separated string or JSON list."""
+        if v is None or v == "":
+            # Return default if empty or not set
+            return ["http://localhost:3000", "http://127.0.0.1:3000"]
         if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return ["http://localhost:3000", "http://127.0.0.1:3000"]
             # Handle JSON format: ["url1", "url2"]
             if v.startswith('['):
                 import json
-                return json.loads(v)
+                try:
+                    return json.loads(v)
+                except json.JSONDecodeError:
+                    return ["http://localhost:3000", "http://127.0.0.1:3000"]
             # Handle comma-separated format: url1,url2
             return [origin.strip() for origin in v.split(',') if origin.strip()]
         return v
