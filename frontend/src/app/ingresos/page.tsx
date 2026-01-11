@@ -458,10 +458,10 @@ export default function IngresosPage() {
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-primary">
-                          {lote.total_javas?.toFixed(2) || '0'} javas
+                          {Number(lote.total_javas || 0).toFixed(2)} javas
                         </p>
                         <p className="text-sm text-gray-500">
-                          {lote.total_kg?.toFixed(2) || '0'} kg
+                          {Number(lote.total_kg || 0).toFixed(2)} kg
                         </p>
                       </div>
                     </div>
@@ -475,9 +475,9 @@ export default function IngresosPage() {
                             <span className="text-gray-500"> - {item.product_name || getProductName(item.product_id)}</span>
                           </div>
                           <div className="text-right">
-                            <span>{item.total_javas.toFixed(1)} j</span>
+                            <span>{Number(item.total_javas).toFixed(1)} j</span>
                             <span className="text-gray-500 ml-2">
-                              S/. {item.cost_per_java.toFixed(2)}/j
+                              S/. {Number(item.cost_per_java).toFixed(2)}/j
                             </span>
                           </div>
                         </div>
@@ -487,7 +487,7 @@ export default function IngresosPage() {
                     {lote.total_cost && (
                       <div className="mt-2 pt-2 border-t flex justify-between text-sm">
                         <span className="text-gray-500">Costo Total:</span>
-                        <span className="font-medium">S/. {lote.total_cost.toFixed(2)}</span>
+                        <span className="font-medium">S/. {Number(lote.total_cost).toFixed(2)}</span>
                       </div>
                     )}
                   </div>

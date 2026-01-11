@@ -152,7 +152,7 @@ export default function AdminDashboard() {
                     <p className="text-xs text-muted-foreground">ID: {item.product_id}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold">{item.total_javas_available.toFixed(1)} javas</p>
+                    <p className="font-bold">{Number(item.total_javas_available).toFixed(1)} javas</p>
                     {item.total_javas_available < 10 && (
                       <Badge variant="destructive" className="text-[10px]">Stock Bajo</Badge>
                     )}

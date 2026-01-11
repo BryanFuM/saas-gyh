@@ -255,7 +255,7 @@ export default function ReportesPage() {
                         <div key={s.product_id} className="flex justify-between items-center">
                           <span className="text-gray-600">{s.product_name}</span>
                           <span className={`font-medium ${s.total_javas_available <= 10 ? 'text-red-600' : 'text-green-600'}`}>
-                            {s.total_javas_available.toFixed(2)} javas
+                            {Number(s.total_javas_available).toFixed(2)} javas
                           </span>
                         </div>
                       ))}
@@ -275,7 +275,7 @@ export default function ReportesPage() {
                         <div key={i.id} className="border-b pb-3">
                           <div className="flex justify-between">
                             <span className="font-medium">{i.supplier_name}</span>
-                            <span className="text-primary">{i.total_javas.toFixed(2)} javas</span>
+                            <span className="text-primary">{Number(i.total_javas).toFixed(2)} javas</span>
                           </div>
                           <div className="flex justify-between text-sm text-gray-500">
                             <span>{i.total_kg} kg</span>
