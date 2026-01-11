@@ -385,7 +385,7 @@ export default function ClientesPage() {
                 {payments.map((payment) => (
                   <div key={payment.id} className="border rounded-lg p-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-green-600 font-bold">S/. {payment.amount.toFixed(2)}</span>
+                      <span className="text-green-600 font-bold">S/. {Number(payment.amount).toFixed(2)}</span>
                       <span className="text-xs text-gray-500">
                         {new Date(payment.date).toLocaleDateString('es-PE', {
                           year: 'numeric',
