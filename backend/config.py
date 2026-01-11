@@ -5,6 +5,7 @@ Loads configuration from environment variables with validation.
 from functools import lru_cache
 from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 
 
 class Settings(BaseSettings):
@@ -28,8 +29,21 @@ class Settings(BaseSettings):
     # Timezone
     TIMEZONE: str = "America/Lima"
     
-    # CORS
+    # CORS - accepts comma-separated string or JSON list
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    
+    @field_validator('CORS_ORIGINS', mode='before')
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """Parse CORS_ORIGINS from comma-separated string or JSON list."""
+        if isinstance(v, str):
+            # Handle JSON format: ["url1", "url2"]
+            if v.startswith('['):
+                import json
+                return json.loads(v)
+            # Handle comma-separated format: url1,url2
+            return [origin.strip() for origin in v.split(',') if origin.strip()]
+        return v
     
     # API
     API_TITLE: str = "GyH API"
