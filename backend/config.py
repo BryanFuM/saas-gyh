@@ -5,7 +5,7 @@ Loads configuration from environment variables with validation.
 from functools import lru_cache
 from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator
+from pydantic import computed_field
 
 
 class Settings(BaseSettings):
@@ -29,30 +29,30 @@ class Settings(BaseSettings):
     # Timezone
     TIMEZONE: str = "America/Lima"
     
-    # CORS - accepts comma-separated string or JSON list
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    # CORS - stored as string, parsed via property
+    CORS_ORIGINS_STR: str = "http://localhost:3000,http://127.0.0.1:3000"
     
-    @field_validator('CORS_ORIGINS', mode='before')
-    @classmethod
-    def parse_cors_origins(cls, v):
-        """Parse CORS_ORIGINS from comma-separated string or JSON list."""
-        if v is None or v == "":
-            # Return default if empty or not set
+    @computed_field
+    @property
+    def CORS_ORIGINS(self) -> List[str]:
+        """Parse CORS_ORIGINS from comma-separated string."""
+        if not self.CORS_ORIGINS_STR:
             return ["http://localhost:3000", "http://127.0.0.1:3000"]
-        if isinstance(v, str):
-            v = v.strip()
-            if not v:
+        
+        value = self.CORS_ORIGINS_STR.strip()
+        if not value:
+            return ["http://localhost:3000", "http://127.0.0.1:3000"]
+        
+        # Handle JSON format: ["url1", "url2"]
+        if value.startswith('['):
+            import json
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
                 return ["http://localhost:3000", "http://127.0.0.1:3000"]
-            # Handle JSON format: ["url1", "url2"]
-            if v.startswith('['):
-                import json
-                try:
-                    return json.loads(v)
-                except json.JSONDecodeError:
-                    return ["http://localhost:3000", "http://127.0.0.1:3000"]
-            # Handle comma-separated format: url1,url2
-            return [origin.strip() for origin in v.split(',') if origin.strip()]
-        return v
+        
+        # Handle comma-separated format: url1,url2
+        return [origin.strip() for origin in value.split(',') if origin.strip()]
     
     # API
     API_TITLE: str = "GyH API"
