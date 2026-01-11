@@ -293,7 +293,7 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
               <span className="text-lg md:text-xl">Nueva Venta - {mode}</span>
               {mode === 'PEDIDO' && selectedClient && (
                 <Badge variant="destructive" className="text-sm md:text-lg px-3 py-1 w-fit">
-                  Deuda: S/ {selectedClient.current_debt.toFixed(2)}
+                  Deuda: S/ {Number(selectedClient.current_debt).toFixed(2)}
                 </Badge>
               )}
             </CardTitle>
@@ -419,10 +419,10 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
               {mode === 'PEDIDO' && selectedClient && (
                 <>
                   <p className="text-sm text-gray-500">
-                    Deuda Anterior: S/ {selectedClient.current_debt.toFixed(2)}
+                    Deuda Anterior: S/ {Number(selectedClient.current_debt).toFixed(2)}
                   </p>
                   <p className="text-xl font-bold text-primary">
-                    Nueva Deuda: S/ {(totals.amount + selectedClient.current_debt).toFixed(2)}
+                    Nueva Deuda: S/ {(totals.amount + Number(selectedClient.current_debt)).toFixed(2)}
                   </p>
                 </>
               )}
@@ -518,7 +518,7 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
                 <div className="bg-yellow-50 p-4 rounded-lg space-y-1">
                   <div className="flex justify-between">
                     <span>Deuda Anterior:</span>
-                    <span>S/ {selectedClient.current_debt.toFixed(2)}</span>
+                    <span>S/ {Number(selectedClient.current_debt).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>+ Venta Actual:</span>
@@ -527,7 +527,7 @@ export function SaleForm({ onSuccess }: { onSuccess: () => void }) {
                   <div className="flex justify-between font-bold text-lg border-t pt-2">
                     <span>Nueva Deuda Total:</span>
                     <span className="text-red-600">
-                      S/ {(totals.amount + selectedClient.current_debt).toFixed(2)}
+                      S/ {(totals.amount + Number(selectedClient.current_debt)).toFixed(2)}
                     </span>
                   </div>
                 </div>
