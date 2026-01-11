@@ -15,7 +15,7 @@ interface Payment {
   id: number;
   amount: number;
   notes: string | null;
-  created_at: string;
+  date: string;
 }
 
 interface Client {
@@ -387,7 +387,7 @@ export default function ClientesPage() {
                     <div className="flex justify-between items-center">
                       <span className="text-green-600 font-bold">S/. {payment.amount.toFixed(2)}</span>
                       <span className="text-xs text-gray-500">
-                        {new Date(payment.created_at).toLocaleDateString('es-PE', {
+                        {new Date(payment.date).toLocaleDateString('es-PE', {
                           year: 'numeric',
                           month: 'short',
                           day: 'numeric',
