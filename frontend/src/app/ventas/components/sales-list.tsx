@@ -257,8 +257,8 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
         
         <div className="flex gap-2 w-full md:w-auto">
           <DateRangePicker
-            date={dateRange}
-            setDate={setDateRange}
+            dateRange={dateRange}
+            onDateRangeChange={setDateRange}
           />
           <Button variant="outline" size="icon" onClick={fetchSales} disabled={isLoading}>
             <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
