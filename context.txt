@@ -1,0 +1,159 @@
+Agro inversiones Beto
+Introducción
+ Contexto del Negocio
+El rubro de comercio mayorista de productos agrícolas se caracteriza por un alto dinamismo, manejo intensivo de efectivo y una rotación acelerada de mercadería. En la actualidad, "Agroinversiones Beto" enfrenta desafíos operativos comunes en el sector, como la discrepancia entre unidades de compra (kilos) y almacenamiento (javas), la gestión manual de cuentas por cobrar (crédito) y la falta de visibilidad en tiempo real del stock disponible. Y restante/STOCK POR CAMION NO INDISPENSABLE
+Objetivo del Proyecto
+El presente documento detalla el diseño y funcionamiento de una solución de software a medida, orientada a digitalizar y optimizar el flujo operativo del negocio. El sistema busca centralizar la información desde la recepción de camiones hasta la venta final, eliminando los cálculos manuales y reduciendo el riesgo de pérdida de información.
+Alcance de la Solución
+La solución propuesta es una aplicación web responsiva (optimizada para Tablets y Móviles) que abarca:
+•	Automatización de la conversión de unidades (Kilos a Javas).
+•	Cálculo automático de costos y rentabilidad por lote.
+•	Gestión dual de ventas: Caja Rápida (Contado) y Pedidos (Crédito).
+•	Control estricto de cuentas corrientes (POR DIAS SIN REGISTRO DE PAGO) y amortización de deudas de clientes (MANUAL).
+•	Envió de comprobante de pagos via wsp a cada cliente.
+•	Monitoreo en tiempo real de indicadores clave (KPI’s).
+1. Modulo Gestión del Catálogo de Productos
+1.1 Descripción General
+Este módulo es el punto de partida del sistema. Permite registrar y administrar los distintos tipos de mercadería que comercializa el negocio (ej. Kion, Zapallo, palillo, etc.). Su función principal es estandarizar las características de los productos y, lo más importante, definir las reglas de equivalencia (Factor de Conversión) para automatizar el control de inventario.
+1.2 Funcionalidad: Registro de Nuevo Producto
+Desde la sección "Productos", el usuario accede al botón "Nuevo Producto", el cual despliega un formulario modal diseñado para una captura rápida de datos.
+Campos del Formulario: (OBS X BOX)
+•	Nombre del Producto: Identificador principal (Ej. Kion).
+•	Tipo: Clasificación interna según la variedad del producto (Ej. Tipo1, Tipo 2). Esto permite diferenciar el stock no solo por producto, sino por variantes.
+•	Calidad: Nivel del producto (Ej. A1, Segunda, Descarte). Crucial para el negocio mayorista, ya que la calidad determina el precio de venta.
+•	NO INDISPENSABLE Factor de Conversión (Kg por Java): Campo Crítico. Aquí se define la equivalencia matemática para el almacén.
+o	Ejemplo: Si se ingresa "20", el sistema entenderá que por cada 20 kilos recibidos, se debe contabilizar 1 java en el inventario.
+1.3 Reglas de Negocio y Datos Adicionales
+•	Flexibilidad de Tipos y Calidades: El sistema está diseñado para adaptarse a la terminología propia del mercado mayorista. Los atributos "Tipo" y "Calidad" son escalables, permitiendo agregar nuevas variantes sin necesidad de reprogramar el software.
+•	Unidad de Medida: Aunque la compra se realice en kilogramos, el sistema utiliza el "Factor de Conversión" configurado aquí para transformar automáticamente el stock a Javas, facilitando la lectura del inventario en el Dashboard principal.
+2. Módulo de Ingreso y Recepción de Mercadería
+2.1 Descripción General
+Este módulo gestiona la entrada diaria de mercadería al almacén. Está diseñado para reflejar la realidad operativa: la mercadería llega en camiones de carga, y un solo camión puede transportar múltiples tipos de productos (lotes mixtos).
+El objetivo central es registrar la carga de manera rápida, minimizando el tiempo de espera y automatizando el cálculo de costos unitarios.
+2.2 Flujo de Registro (Paso a Paso)
+El formulario de "Nuevo Ingreso" permite consolidar toda la carga de un vehículo en un solo registro.
+1. Identificación del Transporte: (AGREGAR EL COLOR DE CAMION)
+•	Placa del Camión: Se ingresa el identificador del vehículo para mantener la trazabilidad de la carga.
+2. Registro de Productos (Lotes): El sistema permite agregar dinámicamente uno o varios productos asociados a ese camión mediante el botón "Agregar Producto". Para cada ítem se solicitan los siguientes datos:
+•	Proveedor: Se especifica quién provee este lote específico.
+•	Producto: Se selecciona del catálogo previamente registrado.
+o	Nota: El sistema carga automáticamente el Factor de Conversión interno del producto (no requiere ingreso manual). DIFERENTE POR PRODUCTO
+•	Total KG: El peso total recibido de ese producto específico.
+•	Costo Total del Lote (S/.): El usuario ingresa el monto total de dinero pagado por ese lote de mercadería. NO VA
+3. NO VA Cálculos Automáticos (Visor de Rentabilidad): Una vez ingresado el Total KG y el Costo Total, el sistema calcula y muestra automáticamente:
+•	Precio Unitario por Kilogramo: (Costo Total / Total KG).
+•	Precio Unitario por Java: (Costo Total / Cantidad de Javas calculadas).
+•	Beneficio: Esto permite al dueño conocer inmediatamente su costo real unitario sin usar calculadora.
+4. Finalización:
+•	Al hacer clic en "Registrar Ingreso", el sistema actualiza el stock físico y el costo promedio ponderado de los productos.
+2.3 Beneficios Operativos
+•	Registro Simplificado: El usuario solo necesita conocer el monto total de la factura o pago, reduciendo la carga cognitiva de calcular unitarios en el momento de la recepción.
+•	Agilidad en Recepción: Permite capturar la información de un camión con múltiples productos en una sola pantalla.
+•	NO VA Precisión en Costos: Al derivar los costos unitarios del total pagado, se evitan errores de redondeo manual, asegurando que el margen de ganancia posterior sea real.
+3. Módulo de Ventas y Salida de Mercadería
+3.1 Descripción General
+Este módulo gestiona la salida de stock y el ingreso de dinero. Dado que la dinámica del mercado es híbrida, el sistema incorpora dos flujos de trabajo diferenciados: Venta en Caja (Contado/Rápida) y Venta a Pedido (Crédito/Mayorista). Ambos modos comparten la flexibilidad de precios, permitiendo al vendedor ajustar el "Precio por Kilo" según la negociación con cada cliente en tiempo real.
+3.2 Modalidad 1: Venta en Caja (Contado)
+Diseñada para la atención rápida de clientes de paso ("Cliente X") PODER REGISTRAR AL CLIENTE que pagan al momento y no requieren registro de deuda.
+Flujo del Proceso:
+1.	Selección de Productos: El usuario busca el producto y define la cantidad en Kilogramos.
+2.	Negociación de Precio:
+o	El sistema permite editar libremente el campo "Precio/KG".
+o	Caso de Uso: El sistema permite vender el mismo producto a S/ 1.50 a un cliente y minutos después a S/ 1.60 a otro, reflejando el regateo típico del mercado.
+3.	Carrito de Compras: Se pueden agregar múltiples productos a una misma transacción.
+4.	Cierre de Venta: AGREGAR EN CAJA VALORES EFECTIVO O YAPE
+o	Solo Guardar: Registra la venta internamente y descuenta stock sin imprimir papel.
+o	Guardar e Imprimir: Genera un ticket/boleta física para el cliente como comprobante de traslado.
+3.3 Modalidad 2: Venta a Pedido (Crédito y Entregas)
+Diseñada para clientes recurrentes o mayoristas que realizan pedidos por teléfono/mensaje y manejan una línea de crédito (fiado).
+Flujo del Proceso: AGREGAR EN EL FLUJO QUE CLIENTE PUEDE PAGAR ALGO DE SU DEUDA
+1.	Identificación del Cliente:
+o	Es obligatorio seleccionar un cliente registrado o crear uno nuevo ("Nuevo Cliente").
+o	Alerta de Deuda: Al seleccionar al cliente, el sistema muestra visualmente su estado de días sin pagar nada.
+2.	Registro de Productos: Similar a la venta en caja, se ingresan cantidades y precios pactados.
+3.	Gestión de Pagos y Créditos (Nuevo Requerimiento):
+o	El sistema calcula el Total de la Venta.
+o	Pago a Cuenta (Amortización): Se incluye un campo para registrar si el cliente deja un adelanto o pago parcial en ese momento.
+o	Cálculo de Nueva Deuda: El sistema actualiza el saldo del cliente con la fórmula:
+$$(\text{Deuda Anterior} + \text{Venta Actual}) - \text{Pago a Cuenta} = \text{Nueva Deuda Total}$$
+4.	Confirmación:
+o	El resumen final muestra explícitamente la Deuda Anterior y la Nueva Deuda Total y amortización, asegurando que tanto el negocio como el cliente tengan claridad sobre el saldo pendiente.
+FALTA CIERRE DE VENTA
+3.4 Beneficios del Módulo
+•	Flexibilidad de Precios: No restringe al vendedor a un precio fijo, permitiendo la negociación fluida.
+•	Control de Morosidad: Al mostrar la deuda en rojo antes de vender, el dueño puede decidir si cortar el crédito a un cliente moroso.
+•	Agilidad Operativa: Diferencia claramente entre una venta rápida de mostrador y una gestión de cuenta corriente, optimizando los tiempos de atención.
+
+
+4. Módulo de Gestión de Clientes y Cuentas Corrientes AGREGAR AMORTIZACION DE VENTAS
+4.1 Descripción General
+Este módulo centraliza la información de los clientes recurrentes, siendo fundamental para soportar el modelo de negocio de "Ventas a Pedido" y créditos (fiados). Su función principal es mantener un control estricto de las cuentas por cobrar, permitiendo al dueño monitorear quién le debe dinero y gestionar las amortizaciones de deuda de manera sencilla y transparente.
+4.2 Funcionalidades Principales
+1. Registro y Perfil del Cliente: El sistema permite dar de alta nuevos clientes tanto desde este módulo como desde la ventana de ventas. El formulario captura los datos esenciales para la operación comercial:
+•	Nombre: Identificación del cliente. STANDARIZAR
+•	WhatsApp: Dato clave para contacto rápido o envío de comprobantes.
+•	Deuda Inicial: Campo opcional que permite migrar deudas antiguas (del cuaderno manual) al sistema digital al momento de registrar al cliente.
+2. Visualización de Estado de Cuenta (Semáforo de Deuda): La interfaz principal presenta a los clientes en tarjetas individuales que muestran su Deuda Actual en tiempo real.
+•	Indicador Visual: El sistema resalta el monto de la deuda (por ejemplo, en color rojo cuando hay saldo pendiente), permitiendo identificar rápidamente a los clientes morosos.
+3. Registro de Pagos y Amortizaciones: Para gestionar el retorno del capital, cada tarjeta de cliente cuenta con un botón de "Registrar Pago".
+•	Flujo: Se abre una ventana modal donde el usuario ingresa el Monto del Pago (Soles) y una Nota opcional (Ej. "Pago en efectivo", "Transferencia Yape").
+•	Impacto: Al guardar, el sistema resta automáticamente el pago de la deuda total del cliente, actualizando su saldo al instante.
+AGREGAR EL ENVIO DEL COMRPOBANTE DE LA DEUDA TOTAL AL WSP DEL CLIENTE
+4. Historial de Transacciones: El botón "Historial" despliega una bitácora detallada de todos los abonos realizados por el cliente. Esto sirve como evidencia ante cualquier reclamo, mostrando fecha, monto y nota de cada pago registrado.
+4.3 Beneficios del Módulo
+•	Control Financiero: Elimina el riesgo de perder "papelitos" con anotaciones de deudas. El saldo siempre es exacto y visible.
+•	Trazabilidad: Permite saber exactamente cuándo y cuánto pagó un cliente, evitando malentendidos en la cobranza.
+•	Recuperación de Cartera: Al tener visible quién debe y cuánto, el dueño puede priorizar sus esfuerzos de cobro.
+
+5. Dashboard Principal y Control en Tiempo Real
+5.1 Descripción General
+Este es el módulo de bienvenida y el centro de control estratégico del sistema. Su objetivo es ofrecer al dueño una vista panorámica e inmediata del estado del negocio apenas inicia sesión, sin necesidad de navegar por menús complejos. Se centra en dos pilares: disponibilidad de mercadería (Stock) y flujo de dinero diario (Ventas).
+5.2 Indicadores Clave de Desempeño (KPIs)
+En la parte superior, el sistema presenta tarjetas de lectura rápida con información consolidada:
+•	Stock Total (Javas): Muestra la suma global de bultos disponibles en el almacén. Este número permite dimensionar la ocupación actual del local.
+•	Contador de Productos: Indica la variedad de ítems distintos registrados en el catálogo.
+(Nota: Se eliminan las tarjetas de "Rol" y "Estado" para limpiar la interfaz y enfocarla 100% en datos operativos).
+5.3 Monitor de Inventario Detallado
+La sección central "Stock Actual por Producto" desglosa el inventario para una toma de decisiones específica. A diferencia de una lista simple, este monitor detalla:
+•	Identificación Completa: Muestra no solo el nombre (Ej. "Kion"), sino también sus atributos clave (Tipo y Calidad) para distinguir lotes de diferente valor.
+•	Semáforo de Disponibilidad:
+o	Stock Saludable: Se muestra en verde cuando la cantidad es suficiente (Ej. 42.40 javas).
+o	Alerta de Stock Bajo: El sistema marca en rojo y con una etiqueta de advertencia ("Stock bajo") aquellos productos que están próximos a agotarse (Ej. menos de 10 javas), indicando la necesidad de reabastecimiento urgente.
+5.4 Resumen de Ventas del Día (Caja Diaria)
+Como nueva funcionalidad de control financiero, se incorpora una ventana resumen que monitorea el movimiento del día en curso:
+•	Ventas Rápidas (Efectivo): Suma total de lo recaudado en caja chica por ventas al paso.
+•	Ventas a Pedido (Crédito): Suma total de las transacciones generadas a crédito/fiado en el día.
+•	Beneficio: Permite al dueño realizar un "arqueo rápido" visual para saber cuánto ha vendido hasta el momento sin tener que generar un reporte extenso.
+5.5 Beneficios para el dueño 
+•	Control de Pérdidas: Las alertas visuales de stock bajo previenen el desabastecimiento (quiebre de stock).
+•	Visión Financiera Inmediata: Saber cuánto se ha vendido en el día (contado vs. crédito) ayuda a proyectar el cierre de caja.
+•	Eficiencia: Elimina la necesidad de preguntar al almacenero "¿cuánto queda de kion?", ya que el dato está en la pantalla principal.
+
+6. Módulo de Ajustes de Inventario y Mermas
+6.1 Descripción General
+Este módulo tiene como propósito alinear la realidad física del almacén con los datos del sistema. Permite registrar salidas de mercadería que no generan ingresos monetarios (a diferencia de las ventas), gestionando incidencias comunes en el negocio mayorista como deterioro de productos (mermas), robos, pérdidas o consumo interno.
+6.2 Funcionalidad Principal: Registro de Movimientos Manuales
+El sistema contará con un botón "Nuevo Ajuste / Baja" que desplegará un formulario para justificar la reducción del stock.
+Datos requeridos para el ajuste:
+•	Producto: Selección del ítem a ajustar (Ej. Kion).
+•	Cantidad (Javas/Kilos): El usuario ingresa la cantidad física que se va a dar de baja.
+•	Motivo del Ajuste (Tipificación): Un selector clave para reportes futuros. Las opciones estándar incluyen:
+o	Merma/Deterioro: Producto podrido o malogrado.
+o	Robo/Pérdida: Mercadería que falta sin explicación.
+o	Error de Conteo: Corrección de un ingreso mal digitado anteriormente.
+o	Consumo Interno: Producto que el dueño retira para uso personal o muestras.
+•	Observación: Campo de texto libre para detalles específicos (Ej. "Se mojaron 3 sacos por lluvia").
+6.3 Cálculo de Impacto Económico (Valorización de Pérdida)
+Una característica avanzada de este módulo es que, al registrar una baja por "Merma" o "Robo", el sistema calcula automáticamente el Costo de la Pérdida.
+•	Fórmula: $\text{Cantidad Ajustada} \times \text{Costo Promedio del Producto}$.
+•	Beneficio: El dueño no solo ve que tiene "5 javas menos", sino que el sistema le alerta: "Esta merma representa una pérdida de S/ 250.00".
+6.4 Historial de Auditoría
+El módulo presenta una tabla ("Kardex de Ajustes") donde se listan todos los movimientos manuales realizados, mostrando:
+•	Fecha y Hora.
+•	Usuario que realizó el ajuste (para responsabilidad interna).
+•	Motivo y Cantidad.
+6.5 Beneficios Operativos
+•	Sinceramiento de Stock: Evita que el sistema muestre productos disponibles que en realidad ya no existen, previniendo ventas fallidas.
+•	Control de Fugas: Al obligar a registrar los robos o pérdidas, se genera un patrón que ayuda a identificar problemas de seguridad en el almacén.
+•	Gestión de Calidad: Si se registran muchas mermas, el dueño puede detectar si está comprando mercadería de mala calidad o si está fallando el almacenamiento.
+
