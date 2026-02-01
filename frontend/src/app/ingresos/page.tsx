@@ -320,8 +320,8 @@ export default function IngresosPage() {
                           <Label>Factor (KG/Java)</Label>
                           <Input
                             type="number"
-                            step="0.1"
-                            min="1"
+                            step="any"
+                            min="0.1"
                             value={item.conversion_factor}
                             onChange={(e) => updateItem(index, 'conversion_factor', e.target.value)}
                             placeholder="20"
