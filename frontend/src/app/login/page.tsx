@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/lib/supabase';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -22,41 +23,41 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const formData = new URLSearchParams();
-      formData.append('username', username);
-      formData.append('password', password);
+      // Buscar usuario en Supabase
+      const { data: user, error } = await supabase
+        .from('users')
+        .select('id, username, password_hash, role, is_active')
+        .eq('username', username)
+        .eq('is_active', true)
+        .single();
 
-      const response = await fetch('/api/python/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error('Credenciales incorrectas');
+      if (error || !user) {
+        throw new Error('Usuario no encontrado');
       }
 
-      const data = await response.json();
-      
-      // Get user info
-      const userResponse = await fetch('/api/python/users/me', {
-        headers: {
-          'Authorization': `Bearer ${data.access_token}`,
-        },
-      });
-      const userData = await userResponse.json();
+      // Verificar contraseña (comparación simple para MVP)
+      // En producción usar bcrypt o Supabase Auth
+      if (user.password_hash !== password) {
+        throw new Error('Contraseña incorrecta');
+      }
+
+      // Crear token simple (en producción usar JWT o Supabase Auth)
+      const token = btoa(JSON.stringify({ 
+        id: user.id, 
+        username: user.username, 
+        role: user.role,
+        exp: Date.now() + (24 * 60 * 60 * 1000) // 24 horas
+      }));
 
       setAuth({ 
-        id: userData.id,
-        username: userData.username, 
-        role: userData.role 
-      }, data.access_token);
+        id: user.id,
+        username: user.username, 
+        role: user.role 
+      }, token);
       
       toast({
         title: "Bienvenido",
-        description: `Sesión iniciada como ${userData.role}`,
+        description: `Sesión iniciada como ${user.role}`,
       });
 
       router.push('/');

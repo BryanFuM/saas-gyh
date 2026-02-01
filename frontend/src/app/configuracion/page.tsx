@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Settings, Building2, Users, Printer, Plus, Trash2, Edit2, Save, X, UserPlus, Phone, MessageSquare, ShieldCheck } from 'lucide-react';
+import { Settings, Building2, Users, Printer, Trash2, Edit2, Save, X, UserPlus, Phone, MessageSquare, ShieldCheck } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -29,12 +29,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-
-interface SystemUser {
-  id: number;
-  username: string;
-  role: 'ADMIN' | 'VENDEDOR';
-}
+import { useSystemUsers, useCreateUser, useDeleteUser } from '@/hooks/use-users-supabase';
 
 interface BusinessSettings {
   company_name: string;
@@ -44,14 +39,15 @@ interface BusinessSettings {
 }
 
 export default function ConfiguracionPage() {
-  const { token, user, isHydrated, hydrate } = useAuthStore();
+  const { user, isHydrated, hydrate } = useAuthStore();
   const { toast } = useToast();
   
-  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('negocio');
   
-  // Users list
-  const [users, setUsers] = useState<SystemUser[]>([]);
+  // Users from Supabase
+  const { data: users = [], isLoading: isLoadingUsers } = useSystemUsers();
+  const createUserMutation = useCreateUser();
+  const deleteUserMutation = useDeleteUser();
   
   // Business settings (stored in localStorage for MVP)
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings>({
@@ -67,6 +63,7 @@ export default function ConfiguracionPage() {
     whatsapp: '',
     address: '',
   });
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   
   // New user form
   const [showUserDialog, setShowUserDialog] = useState(false);
@@ -75,18 +72,14 @@ export default function ConfiguracionPage() {
     password: '',
     role: 'VENDEDOR' as 'ADMIN' | 'VENDEDOR',
   });
-  const [isSavingUser, setIsSavingUser] = useState(false);
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
 
   useEffect(() => {
-    if (token) {
-      fetchUsers();
-      loadBusinessSettings();
-    }
-  }, [token]);
+    loadBusinessSettings();
+  }, []);
 
   const loadBusinessSettings = () => {
     try {
@@ -99,7 +92,7 @@ export default function ConfiguracionPage() {
     } catch (error) {
       console.error('Error loading business settings:', error);
     }
-    setIsLoading(false);
+    setIsLoadingSettings(false);
   };
 
   const saveBusinessSettings = () => {
@@ -113,54 +106,23 @@ export default function ConfiguracionPage() {
     }
   };
 
-  const fetchUsers = async () => {
-    try {
-      const response = await fetch('/api/python/users', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setUsers(data);
-      }
-    } catch (error) {
-      console.error('Error fetching users:', error);
-    }
-  };
-
-  const createUser = async () => {
+  const handleCreateUser = async () => {
     if (!newUserForm.username.trim() || !newUserForm.password.trim()) {
       toast({ title: "Error", description: "Usuario y contraseña son requeridos", variant: "destructive" });
       return;
     }
     
-    setIsSavingUser(true);
     try {
-      const response = await fetch('/api/python/users', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(newUserForm),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.detail || 'Error al crear usuario');
-      }
-
+      await createUserMutation.mutateAsync(newUserForm);
       toast({ title: "Éxito", description: "Usuario creado correctamente" });
       setShowUserDialog(false);
       setNewUserForm({ username: '', password: '', role: 'VENDEDOR' });
-      fetchUsers();
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    } finally {
-      setIsSavingUser(false);
     }
   };
 
-  const deleteUser = async (userId: number, username: string) => {
+  const handleDeleteUser = async (userId: string, username: string) => {
     // Prevent deleting yourself
     if (user?.id === userId) {
       toast({ title: "Error", description: "No puedes eliminar tu propio usuario", variant: "destructive" });
@@ -168,15 +130,8 @@ export default function ConfiguracionPage() {
     }
 
     try {
-      const response = await fetch(`/api/python/users/${userId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-
-      if (!response.ok) throw new Error('Error al eliminar');
-
+      await deleteUserMutation.mutateAsync(userId);
       toast({ title: "Eliminado", description: `Usuario ${username} eliminado` });
-      fetchUsers();
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
@@ -228,7 +183,7 @@ export default function ConfiguracionPage() {
 
         {/* Business Settings Tab */}
         <TabsContent value="negocio">
-          {isLoading ? (
+          {isLoadingSettings ? (
             <div className="flex justify-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
             </div>
@@ -396,7 +351,11 @@ export default function ConfiguracionPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {users.length === 0 ? (
+              {isLoadingUsers ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : users.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">No hay usuarios registrados</p>
               ) : (
                 <div className="space-y-3">
@@ -418,7 +377,7 @@ export default function ConfiguracionPage() {
                       {u.id !== user?.id && (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="sm">
+                            <Button variant="ghost" size="sm" disabled={deleteUserMutation.isPending}>
                               <Trash2 className="h-4 w-4 text-red-500" />
                             </Button>
                           </AlertDialogTrigger>
@@ -434,7 +393,7 @@ export default function ConfiguracionPage() {
                               <AlertDialogCancel>Cancelar</AlertDialogCancel>
                               <AlertDialogAction
                                 className="bg-red-500 hover:bg-red-600"
-                                onClick={() => deleteUser(u.id, u.username)}
+                                onClick={() => handleDeleteUser(u.id, u.username)}
                               >
                                 Eliminar
                               </AlertDialogAction>
@@ -501,8 +460,8 @@ export default function ConfiguracionPage() {
             <Button variant="outline" onClick={() => setShowUserDialog(false)}>
               Cancelar
             </Button>
-            <Button onClick={createUser} disabled={isSavingUser}>
-              {isSavingUser ? 'Creando...' : 'Crear Usuario'}
+            <Button onClick={handleCreateUser} disabled={createUserMutation.isPending}>
+              {createUserMutation.isPending ? 'Creando...' : 'Crear Usuario'}
             </Button>
           </DialogFooter>
         </DialogContent>

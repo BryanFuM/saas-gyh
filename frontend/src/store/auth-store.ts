@@ -4,7 +4,7 @@ import Cookies from 'js-cookie';
 export type UserRole = 'ADMIN' | 'VENDEDOR' | 'INVENTOR';
 
 interface User {
-  id?: number;
+  id: string;  // UUID para Supabase
   username: string;
   role: UserRole;
 }

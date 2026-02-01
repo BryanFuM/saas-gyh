@@ -1,46 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useAuthStore } from '@/store/auth-store';
+import { useStock, StockItem } from '@/hooks/use-stock-supabase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Package, ShoppingCart, Users, TrendingUp } from 'lucide-react';
 
-interface StockItem {
-  product_id: number;
-  product_name: string;
-  total_javas_available: number;
-}
-
 export default function HomePage() {
-  const { user, token, isHydrated, hydrate } = useAuthStore();
-  const [stock, setStock] = useState<StockItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, isHydrated, hydrate } = useAuthStore();
+  const { data: stock = [], isLoading } = useStock();
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
-
-  useEffect(() => {
-    if (token) {
-      fetchStock();
-    }
-  }, [token]);
-
-  const fetchStock = async () => {
-    try {
-      const response = await fetch('/api/python/ingresos/stock/disponible', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setStock(data);
-      }
-    } catch (error) {
-      console.error('Error fetching stock:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   if (!isHydrated) {
     return (
@@ -70,7 +42,7 @@ export default function HomePage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {stock.reduce((acc, item) => acc + item.total_javas_available, 0).toFixed(2)} javas
+              {stock.reduce((acc, item) => acc + item.stock_javas, 0).toFixed(2)} javas
             </div>
           </CardContent>
         </Card>
@@ -124,14 +96,14 @@ export default function HomePage() {
               {stock.map((item) => (
                 <div key={item.product_id} className="flex items-center justify-between p-4 border rounded-lg">
                   <div>
-                    <p className="font-medium">{item.product_name}</p>
+                    <p className="font-medium">{item.name}</p>
                   </div>
                   <div className="text-right">
-                    <p className={`text-xl font-bold ${item.total_javas_available <= 10 ? 'text-red-600' : 'text-green-600'}`}>
-                      {item.total_javas_available.toFixed(2)} javas
+                    <p className={`text-xl font-bold ${item.estado_stock === 'BAJO' || item.estado_stock === 'NEGATIVO' ? 'text-red-600' : 'text-green-600'}`}>
+                      {item.stock_javas.toFixed(2)} javas
                     </p>
-                    {item.total_javas_available <= 10 && (
-                      <p className="text-xs text-red-500">Stock bajo</p>
+                    {(item.estado_stock === 'BAJO' || item.estado_stock === 'NEGATIVO') && (
+                      <p className="text-xs text-red-500">Stock {item.estado_stock.toLowerCase()}</p>
                     )}
                   </div>
                 </div>

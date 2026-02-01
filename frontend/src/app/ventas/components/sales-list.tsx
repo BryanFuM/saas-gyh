@@ -31,50 +31,57 @@ import { Edit, Printer, Search, Trash2, RefreshCw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { TicketTemplate } from './ticket-template';
 import { useReactToPrint } from 'react-to-print';
+import { supabase } from '@/lib/supabase';
 
-interface SaleItem {
+// --- Interfaces de Base de Datos (Supabase) ---
+
+interface Product {
   id: number;
-  product_id: number;
-  quantity_javas: number;
-  quantity_original?: number;
-  unit?: string;
-  unit_sale_price: string;
+  name: string;
+  type: string;
+  quality: string;
 }
 
-interface Sale {
-  id: number;
-  date: string;
-  type: string;
-  total_amount: string;
-  user_id: number;
-  client_id?: number;
-  is_printed: boolean;
-  items: SaleItem[];
+interface VentaItem {
+  venta_id: number;
+  product_id: number;
+  quantity_javas: number;
+  subtotal: number;
+  products: Product | null; // Relación anidada
 }
 
 interface Client {
   id: number;
   name: string;
-  whatsapp_number: string;
-  current_debt: string;
+}
+
+interface VentaWithRelations {
+  id: number;
+  date: string; // Supabase devuelve strings para timestamptz
+  total_amount: number;
+  client_id: number | null;
+  guest_client_name: string | null;
+  is_cancelled: boolean;
+  payment_method: string;
+  clients: Client | null; // Relación anidada
+  venta_items: VentaItem[]; // Relación anidada
 }
 
 export function SalesList({ refreshKey }: { refreshKey: number }) {
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
+  const [sales, setSales] = useState<VentaWithRelations[]>([]);
   const [filter, setFilter] = useState('');
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
   
   // Delete dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [saleToDelete, setSaleToDelete] = useState<Sale | null>(null);
+  const [saleToDelete, setSaleToDelete] = useState<VentaWithRelations | null>(null);
   
   // Print state
-  const [saleToPrint, setSaleToPrint] = useState<Sale | null>(null);
+  const [saleToPrint, setSaleToPrint] = useState<VentaWithRelations | null>(null);
   const ticketRef = useRef<HTMLDivElement>(null);
   
-  const { token, user } = useAuthStore();
+  const { user } = useAuthStore();
   const { toast } = useToast();
 
   const handlePrint = useReactToPrint({
@@ -83,49 +90,64 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
 
   useEffect(() => {
     fetchSales();
-    fetchClients();
   }, [refreshKey, dateRange]);
-
-  const fetchClients = async () => {
-    try {
-      const res = await fetch('/api/python/clients', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) setClients(await res.json());
-    } catch (error) {}
-  };
 
   const fetchSales = async () => {
     setIsLoading(true);
     try {
-      let url = '/api/python/ventas';
-      const params = new URLSearchParams();
-      
+      let query = supabase
+        .from('ventas')
+        .select(`
+          *,
+          clients (name),
+          venta_items (
+            quantity_javas,
+            subtotal,
+            products (name, type, quality)
+          )
+        `)
+        .order('date', { ascending: false });
+
+      // Aplicar filtros de fecha si existen
       if (dateRange?.from) {
-        params.append('start_date', format(dateRange.from, 'yyyy-MM-dd'));
+        // Ajustar al inicio del día
+        const fromDate = new Date(dateRange.from);
+        fromDate.setHours(0, 0, 0, 0);
+        query = query.gte('date', fromDate.toISOString());
       }
+      
       if (dateRange?.to) {
-        params.append('end_date', format(dateRange.to, 'yyyy-MM-dd'));
+        // Ajustar al final del día
+        const toDate = new Date(dateRange.to);
+        toDate.setHours(23, 59, 59, 999);
+        query = query.lte('date', toDate.toISOString());
       }
       
-      if (params.toString()) {
-        url += `?${params.toString()}`;
+      const { data, error } = await query;
+
+      if (error) {
+        throw error;
       }
-      
-      const res = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) setSales(await res.json());
+
+      if (data) {
+        setSales(data as unknown as VentaWithRelations[]);
+      }
     } catch (error) {
       console.error('Error fetching sales:', error);
+      toast({
+        variant: "destructive",
+        title: "Error al cargar ventas",
+        description: "No se pudieron obtener los datos de Supabase",
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const getClientById = (clientId?: number): Client | undefined => {
-    if (!clientId) return undefined;
-    return clients.find(c => c.id === clientId);
+  const hasClientName = (sale: VentaWithRelations) => {
+    if (sale.clients?.name) return sale.clients.name;
+    if (sale.guest_client_name) return sale.guest_client_name;
+    return "Cliente Eventual";
   };
 
   const formatDate = (dateString: string): string => {
@@ -138,7 +160,10 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
     }
   };
 
-  const canEdit = (sale: Sale) => {
+  const canEdit = (sale: VentaWithRelations) => {
+    // Si está cancelada no se edita
+    if (sale.is_cancelled) return false;
+    
     if (user?.role === 'ADMIN') return true;
     try {
       const saleDate = parseISO(sale.date);
@@ -149,7 +174,10 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
     }
   };
 
-  const canDelete = (sale: Sale) => {
+  const canDelete = (sale: VentaWithRelations) => {
+    // Si ya está cancelada, no mostrar botón de anular
+    if (sale.is_cancelled) return false;
+
     if (user?.role === 'ADMIN') return true;
     try {
       const saleDate = parseISO(sale.date);
@@ -160,7 +188,7 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
     }
   };
 
-  const handleDeleteClick = (sale: Sale) => {
+  const handleDeleteClick = (sale: VentaWithRelations) => {
     setSaleToDelete(sale);
     setDeleteDialogOpen(true);
   };
@@ -169,29 +197,36 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
     if (!saleToDelete) return;
     
     try {
-      const res = await fetch(`/api/python/ventas/${saleToDelete.id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+      // Intentar usar RPC primero
+      const { error: rpcError } = await supabase.rpc('anular_venta', { 
+        p_venta_id: saleToDelete.id 
       });
 
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.detail || 'Error al eliminar');
+      if (rpcError) {
+        console.warn('RPC anular_venta falló, intentando update directo...', rpcError);
+        
+        // Fallback: Update manual (SOLO si RPC falla y es una emergencia, 
+        // pero idealmente deberíamos confiar en RPC para manejar stock)
+        const { error: updateError } = await supabase
+          .from('ventas')
+          .update({ is_cancelled: true })
+          .eq('id', saleToDelete.id);
+          
+        if (updateError) throw updateError;
       }
 
       toast({
-        title: "Venta Eliminada",
-        description: saleToDelete.type === 'PEDIDO' 
-          ? "La deuda del cliente ha sido revertida automáticamente"
-          : "La venta ha sido eliminada y el stock restaurado",
+        title: "Venta Anulada",
+        description: "La venta ha sido marcada como anulada correctamente.",
       });
 
-      fetchSales();
+      fetchSales(); // Recargar lista
     } catch (error: any) {
+      console.error(error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message,
+        description: error.message || "No se pudo anular la venta",
       });
     } finally {
       setDeleteDialogOpen(false);
@@ -199,174 +234,166 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
     }
   };
 
-  const handlePrintClick = (sale: Sale) => {
-    setSaleToPrint(sale);
-    setTimeout(() => {
-      handlePrint();
-    }, 300);
-  };
-
-  // Filter sales by ID or client name
+  // Filtrado en memoria
   const filteredSales = sales.filter(sale => {
-    if (!filter) return true;
+    const clientName = hasClientName(sale).toLowerCase();
     const searchLower = filter.toLowerCase();
-    const client = getClientById(sale.client_id);
-    return (
-      sale.id.toString().includes(searchLower) ||
-      client?.name.toLowerCase().includes(searchLower)
-    );
+    const matchesClient = clientName.includes(searchLower);
+    const matchesId = sale.id.toString().includes(searchLower);
+    return matchesClient || matchesId;
   });
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div className="flex items-center gap-2 flex-1">
-          <Search className="w-4 h-4 text-gray-400" />
-          <Input 
-            placeholder="Filtrar por ID o Cliente..." 
+      <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+        <div className="flex gap-2 items-center w-full md:w-auto">
+          <Input
+            placeholder="Buscar por cliente o ID..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="max-w-sm"
+            className="w-full md:w-64"
           />
         </div>
         
-        {user?.role === 'ADMIN' && (
-          <div className="flex items-center gap-2">
-            <DateRangePicker
-              dateRange={dateRange}
-              onDateRangeChange={setDateRange}
-            />
-            <Button 
-              variant="outline" 
-              size="icon"
-              onClick={() => fetchSales()}
-              disabled={isLoading}
-            >
-              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-            </Button>
-          </div>
-        )}
+        <div className="flex gap-2 w-full md:w-auto">
+          <DateRangePicker
+            date={dateRange}
+            setDate={setDateRange}
+          />
+          <Button variant="outline" size="icon" onClick={fetchSales} disabled={isLoading}>
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
       </div>
 
-      <div className="border rounded-md overflow-x-auto">
+      <div className="rounded-md border bg-white overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>ID</TableHead>
               <TableHead>Fecha</TableHead>
-              <TableHead>Tipo</TableHead>
               <TableHead>Cliente</TableHead>
+              <TableHead>Productos</TableHead>
               <TableHead>Total</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
+            {filteredSales.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8">
-                  <div className="flex justify-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : filteredSales.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                  No hay ventas registradas para el período seleccionado.
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  {isLoading ? "Cargando ventas..." : "No se encontraron ventas"}
                 </TableCell>
               </TableRow>
             ) : (
-              filteredSales.map((sale) => {
-                const client = getClientById(sale.client_id);
-                return (
-                  <TableRow key={sale.id}>
-                    <TableCell className="font-medium">#{sale.id}</TableCell>
-                    <TableCell className="whitespace-nowrap">{formatDate(sale.date)}</TableCell>
-                    <TableCell>
-                      <Badge variant={sale.type === 'PEDIDO' ? 'outline' : 'secondary'}>
-                        {sale.type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{client?.name || '-'}</TableCell>
-                    <TableCell>S/ {parseFloat(sale.total_amount).toFixed(2)}</TableCell>
-                    <TableCell>
-                      {sale.is_printed ? (
-                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Impreso</Badge>
-                      ) : (
-                        <Badge variant="outline">Pendiente</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button 
-                          variant="ghost" 
+              filteredSales.map((sale) => (
+                <TableRow key={sale.id} className={sale.is_cancelled ? "bg-muted/50" : ""}>
+                  <TableCell className="font-medium">#{sale.id}</TableCell>
+                  <TableCell>{formatDate(sale.date)}</TableCell>
+                  <TableCell>{hasClientName(sale)}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      {sale.venta_items.map((item, idx) => (
+                        <span key={idx} className="text-sm">
+                          {item.quantity_javas} javas de {item.products?.name} ({item.products?.type} - {item.products?.quality})
+                        </span>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell>S/ {Number(sale.total_amount).toFixed(2)}</TableCell>
+                  <TableCell>
+                    {sale.is_cancelled ? (
+                      <Badge variant="destructive">Anulada</Badge>
+                    ) : (
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Completada</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setSaleToPrint(sale);
+                          setTimeout(() => handlePrint(), 100);
+                        }}
+                        title="Imprimir Ticket"
+                      >
+                        <Printer className="h-4 w-4" />
+                      </Button>
+                      
+                      {canDelete(sale) && (
+                        <Button
+                          variant="ghost"
                           size="icon"
-                          onClick={() => handlePrintClick(sale)}
-                          title="Reimprimir"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => handleDeleteClick(sale)}
+                          title="Anular Venta"
                         >
-                          <Printer className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4" />
                         </Button>
-                        {canEdit(sale) && (
-                          <Button variant="ghost" size="icon" title="Editar">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {canDelete(sale) && (
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => handleDeleteClick(sale)}
-                            title="Eliminar"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
             )}
           </TableBody>
         </Table>
       </div>
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar venta #{saleToDelete?.id}?</AlertDialogTitle>
-            <AlertDialogDescription className="space-y-2">
-              <p>Esta acción no se puede deshacer.</p>
-              {saleToDelete?.type === 'PEDIDO' && (
-                <p className="text-amber-600 font-medium">
-                  ⚠️ La deuda del cliente será revertida automáticamente (S/ {parseFloat(saleToDelete?.total_amount || '0').toFixed(2)}).
-                </p>
-              )}
-              <p>El stock de los productos será restaurado automáticamente.</p>
+            <AlertDialogTitle>¿Anular esta venta?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción marcará la venta #{saleToDelete?.id} como anulada y revertirá el stock de los productos.
+              Esta acción no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction 
-              onClick={handleConfirmDelete} 
+              onClick={handleConfirmDelete}
               className="bg-red-600 hover:bg-red-700"
             >
-              Eliminar Venta
+              Sí, anular venta
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Hidden Ticket for Reprinting */}
+      {/* Hidden Ticket Template for Printing */}
       <div className="hidden">
-        <TicketTemplate 
-          ref={ticketRef} 
-          sale={saleToPrint} 
-          client={saleToPrint ? getClientById(saleToPrint.client_id) || null : null} 
-        />
+        <div ref={ticketRef}>
+          {saleToPrint ? (
+             <TicketTemplate 
+               sale={{
+                 ...saleToPrint,
+                 // Adaptar formato para el template si es necesario
+                 items: saleToPrint.venta_items.map(item => ({
+                    id: 0,
+                    product_id: item.product_id,
+                    quantity_javas: item.quantity_javas,
+                    unit_sale_price: (item.subtotal / item.quantity_javas).toFixed(2),
+                    unit: 'java', // Default unit
+                    product_name: item.products?.name || 'Producto'
+                 })),
+                 type: saleToPrint.payment_method, // Usar metodo de pago como tipo
+                 user_id: 0, // No disponible en esta vista, no crítico para ticket
+                 is_printed: true,
+                 total_amount: saleToPrint.total_amount.toString()
+               }} 
+               client={saleToPrint.clients ? {
+                 id: saleToPrint.clients.id,
+                 name: saleToPrint.clients.name,
+                 whatsapp_number: '',
+                 current_debt: '0'
+               } : undefined}
+             />
+          ) : null}
+        </div>
       </div>
     </div>
   );

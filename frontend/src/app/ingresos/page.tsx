@@ -10,9 +10,8 @@ import { Truck, Package, Plus, Scale, ArrowRight, Trash2, Users } from 'lucide-r
 import { format, parseISO, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ProductSelect } from '@/components/ui/searchable-select';
-import { useProducts } from '@/hooks/use-products';
-import { useIngresos, useCreateIngreso } from '@/hooks/use-ingresos';
-import type { IngresoItemCreate, IngresoLote } from '@/lib/api';
+import { useProducts } from '@/hooks/use-products-supabase';
+import { useIngresos, useCreateIngreso, type IngresoLote, type IngresoItemCreate } from '@/hooks/use-ingresos-supabase';
 
 interface IngresoItemForm {
   id: string; // Unique ID for React key
@@ -159,7 +158,7 @@ export default function IngresosPage() {
 
     try {
       await createIngreso.mutateAsync({
-        truck_id: truckId.trim(),
+        truck_plate: truckId.trim(),
         items: ingresoItems,
       });
 
@@ -452,7 +451,7 @@ export default function IngresosPage() {
                       <div>
                         <p className="font-medium flex items-center gap-2">
                           <Truck className="h-4 w-4" />
-                          Camión: {lote.truck_id}
+                          Camión: {lote.truck_plate}
                         </p>
                         <p className="text-sm text-gray-500">{formatDate(lote.date)}</p>
                       </div>
@@ -475,7 +474,7 @@ export default function IngresosPage() {
                             <span className="text-gray-500"> - {item.product_name || getProductName(item.product_id)}</span>
                           </div>
                           <div className="text-right">
-                            <span>{Number(item.total_javas).toFixed(1)} j</span>
+                            <span>{Number(item.quantity_javas).toFixed(1)} j</span>
                             <span className="text-gray-500 ml-2">
                               S/. {Number(item.cost_per_java).toFixed(2)}/j
                             </span>

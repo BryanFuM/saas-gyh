@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { SaleForm } from './components/sale-form';
+// ✅ Usar el nuevo formulario conectado a Supabase
+import { SaleFormSupabase } from './components/sale-form-supabase';
 import { SalesList } from './components/sales-list';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -26,7 +27,7 @@ export default function VentasPage() {
         </TabsList>
         
         <TabsContent value="nueva" className="space-y-4">
-          <SaleForm onSuccess={handleSaleSuccess} />
+          <SaleFormSupabase onSuccess={handleSaleSuccess} />
         </TabsContent>
         
         <TabsContent value="hoy" className="space-y-4">

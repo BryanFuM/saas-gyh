@@ -9,11 +9,29 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { CreatableSelect } from '@/components/ui/creatable-select';
 import { useToast } from '@/hooks/use-toast';
-import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct } from '@/hooks/use-products';
-import { useProductTypes, useCreateProductType } from '@/hooks/use-product-types';
-import { useProductQualities, useCreateProductQuality } from '@/hooks/use-product-qualities';
+import { 
+  useProducts, 
+  useCreateProduct, 
+  useUpdateProduct, 
+  useDeleteProduct,
+  useProductTypes,
+  useProductQualities,
+  useCreateProductType,
+  useCreateProductQuality,
+  Product,
+} from '@/hooks/use-products-supabase';
 import { ManageConfigModal } from './components/manage-config-modal';
-import { Product as ProductApi, ProductType, ProductQuality } from '@/lib/api';
+
+// Tipos locales (ya no dependemos de api.ts)
+interface ProductType {
+  id: number;
+  name: string;
+}
+
+interface ProductQuality {
+  id: number;
+  name: string;
+}
 import { Package, Plus, Edit, Trash2, Scale, Settings } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -26,14 +44,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-
-interface Product {
-  id: number;
-  name: string;
-  type: string;
-  quality: string;
-  conversion_factor: number;
-}
 
 export default function ProductosPage() {
   const { user, isHydrated, hydrate } = useAuthStore();

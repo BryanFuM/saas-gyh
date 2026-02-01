@@ -1,36 +1,39 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useAuthStore } from '@/store/auth-store';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Users, Plus, Phone, DollarSign, CreditCard, History, Edit } from 'lucide-react';
+import { Users, Plus, Phone, DollarSign, CreditCard, History, Edit, Trash2 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 
-interface Payment {
-  id: number;
-  amount: number;
-  notes: string | null;
-  date: string;
-}
-
-interface Client {
-  id: number;
-  name: string;
-  whatsapp_number: string | null;
-  current_debt: number;
-}
+// ✅ SUPABASE HOOKS
+import { 
+  useClients, 
+  useCreateClient, 
+  useUpdateClient, 
+  useRegisterPayment,
+  useClientPayments,
+  useDeleteClient,
+  Client
+} from '@/hooks/use-clients-supabase';
+import { useAuthStore } from '@/store/auth-store';
 
 export default function ClientesPage() {
-  const { token, user, isHydrated, hydrate } = useAuthStore();
+  const { user } = useAuthStore();
   const { toast } = useToast();
   
-  const [clients, setClients] = useState<Client[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // ✅ React Query hooks conectados a Supabase
+  const { data: clients = [], isLoading } = useClients();
+  const createClientMutation = useCreateClient();
+  const updateClientMutation = useUpdateClient();
+  const registerPaymentMutation = useRegisterPayment();
+  const deleteClientMutation = useDeleteClient();
+  
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   
   // Form state for new client
@@ -46,60 +49,27 @@ export default function ClientesPage() {
   
   // History dialog state
   const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [loadingPayments, setLoadingPayments] = useState(false);
+  const [historyClientId, setHistoryClientId] = useState<number | null>(null);
   
+  // Delete dialog state
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
   // Edit debt dialog state
   const [isEditDebtDialogOpen, setIsEditDebtDialogOpen] = useState(false);
   const [newDebtAmount, setNewDebtAmount] = useState('');
 
-  useEffect(() => {
-    hydrate();
-  }, [hydrate]);
-
-  const fetchClients = async () => {
-    try {
-      const response = await fetch('/api/python/clients', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setClients(data);
-      }
-    } catch (error) {
-      console.error('Error fetching clients:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (token) {
-      fetchClients();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  // Hook para historial de pagos (solo se activa cuando hay clientId)
+  const { data: payments = [], isLoading: loadingPayments } = useClientPayments(historyClientId || 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     try {
-      const response = await fetch('/api/python/clients', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name,
-          whatsapp_number: whatsappNumber || null,
-          current_debt: initialDebt ? parseFloat(initialDebt) : 0,
-        }),
+      await createClientMutation.mutateAsync({
+        name,
+        whatsapp_number: whatsappNumber || null,
+        current_debt: initialDebt ? parseFloat(initialDebt) : 0,
       });
-
-      if (!response.ok) {
-        throw new Error('Error al crear cliente');
-      }
 
       toast({
         title: "Éxito",
@@ -111,9 +81,6 @@ export default function ClientesPage() {
       setWhatsappNumber('');
       setInitialDebt('');
       setIsDialogOpen(false);
-
-      // Refresh list
-      fetchClients();
     } catch (error: any) {
       toast({
         title: "Error",
@@ -128,22 +95,11 @@ export default function ClientesPage() {
     if (!selectedClient) return;
 
     try {
-      const response = await fetch(`/api/python/clients/${selectedClient.id}/payments`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          amount: parseFloat(paymentAmount),
-          notes: paymentNotes || null,
-        }),
+      await registerPaymentMutation.mutateAsync({
+        client_id: selectedClient.id,
+        amount: parseFloat(paymentAmount),
+        notes: paymentNotes || undefined,
       });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Error al registrar pago');
-      }
 
       toast({
         title: "Éxito",
@@ -155,9 +111,6 @@ export default function ClientesPage() {
       setPaymentNotes('');
       setIsPaymentDialogOpen(false);
       setSelectedClient(null);
-
-      // Refresh list
-      fetchClients();
     } catch (error: any) {
       toast({
         title: "Error",
@@ -167,24 +120,10 @@ export default function ClientesPage() {
     }
   };
 
-  const fetchPaymentHistory = async (client: Client) => {
+  const fetchPaymentHistory = (client: Client) => {
     setSelectedClient(client);
-    setLoadingPayments(true);
+    setHistoryClientId(client.id);
     setIsHistoryDialogOpen(true);
-
-    try {
-      const response = await fetch(`/api/python/clients/${client.id}/payments`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setPayments(data);
-      }
-    } catch (error) {
-      console.error('Error fetching payments:', error);
-    } finally {
-      setLoadingPayments(false);
-    }
   };
 
   const openEditDebtDialog = (client: Client) => {
@@ -198,22 +137,12 @@ export default function ClientesPage() {
     if (!selectedClient) return;
 
     try {
-      const response = await fetch(`/api/python/clients/${selectedClient.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: selectedClient.name,
-          whatsapp_number: selectedClient.whatsapp_number,
+      await updateClientMutation.mutateAsync({
+        id: selectedClient.id,
+        data: {
           current_debt: parseFloat(newDebtAmount),
-        }),
+        },
       });
-
-      if (!response.ok) {
-        throw new Error('Error al actualizar deuda');
-      }
 
       toast({
         title: "Éxito",
@@ -222,7 +151,6 @@ export default function ClientesPage() {
 
       setIsEditDebtDialogOpen(false);
       setSelectedClient(null);
-      fetchClients();
     } catch (error: any) {
       toast({
         title: "Error",
@@ -239,13 +167,32 @@ export default function ClientesPage() {
     setIsPaymentDialogOpen(true);
   };
 
-  if (!isHydrated) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
+  const openDeleteDialog = (client: Client) => {
+    setClientToDelete(client);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDeleteClient = async () => {
+    if (!clientToDelete) return;
+
+    try {
+      await deleteClientMutation.mutateAsync(clientToDelete.id);
+      
+      toast({
+        title: "Cliente eliminado",
+        description: `"${clientToDelete.name}" ha sido eliminado`,
+      });
+
+      setIsDeleteDialogOpen(false);
+      setClientToDelete(null);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
 
   const isAdmin = user?.role === 'ADMIN';
 
@@ -312,7 +259,9 @@ export default function ClientesPage() {
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit">Guardar Cliente</Button>
+                <Button type="submit" disabled={createClientMutation.isPending}>
+                  {createClientMutation.isPending ? 'Guardando...' : 'Guardar Cliente'}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -358,14 +307,19 @@ export default function ClientesPage() {
               <Button type="button" variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button type="submit">Registrar Pago</Button>
+              <Button type="submit" disabled={registerPaymentMutation.isPending}>
+                {registerPaymentMutation.isPending ? 'Registrando...' : 'Registrar Pago'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
       {/* Payment History Dialog */}
-      <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
+      <Dialog open={isHistoryDialogOpen} onOpenChange={(open) => {
+        setIsHistoryDialogOpen(open);
+        if (!open) setHistoryClientId(null);
+      }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Historial de Pagos</DialogTitle>
@@ -387,7 +341,7 @@ export default function ClientesPage() {
                     <div className="flex justify-between items-center">
                       <span className="text-green-600 font-bold">S/. {Number(payment.amount).toFixed(2)}</span>
                       <span className="text-xs text-gray-500">
-                        {new Date(payment.date).toLocaleDateString('es-PE', {
+                        {new Date(payment.created_at).toLocaleDateString('es-PE', {
                           year: 'numeric',
                           month: 'short',
                           day: 'numeric',
@@ -436,11 +390,39 @@ export default function ClientesPage() {
               <Button type="button" variant="outline" onClick={() => setIsEditDebtDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button type="submit">Actualizar Deuda</Button>
+              <Button type="submit" disabled={updateClientMutation.isPending}>
+                {updateClientMutation.isPending ? 'Actualizando...' : 'Actualizar Deuda'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar cliente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de eliminar a <strong>{clientToDelete?.name}</strong>?
+              {Number(clientToDelete?.current_debt || 0) > 0 && (
+                <span className="block mt-2 text-red-600">
+                  ⚠️ Este cliente tiene una deuda pendiente de S/. {Number(clientToDelete?.current_debt).toFixed(2)}
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteClient}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteClientMutation.isPending ? 'Eliminando...' : 'Eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {isLoading ? (
         <div className="flex justify-center py-12">
@@ -457,7 +439,17 @@ export default function ClientesPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {clients.map((client) => (
-            <Card key={client.id}>
+            <Card key={client.id} className="relative group">
+              {/* Botón eliminar */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-2 right-2 h-8 w-8 text-gray-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => openDeleteDialog(client)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">{client.name}</CardTitle>
                 <CardDescription className="flex items-center gap-2">
