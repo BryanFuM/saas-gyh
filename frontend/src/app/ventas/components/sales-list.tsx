@@ -32,6 +32,10 @@ import { Input } from '@/components/ui/input';
 import { TicketTemplate } from './ticket-template';
 import { useReactToPrint } from 'react-to-print';
 import { supabase } from '@/lib/supabase';
+import { SaleFormSupabase } from './sale-form-supabase';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { DailyReportDialog } from './daily-report-dialog';
+import { useUserRole } from '@/hooks/use-user-role';
 
 // --- Interfaces de Base de Datos (Supabase) ---
 
@@ -77,11 +81,16 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [saleToDelete, setSaleToDelete] = useState<VentaWithRelations | null>(null);
   
+  // Edit dialog state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [saleToEdit, setSaleToEdit] = useState<any | null>(null);
+  
   // Print state
   const [saleToPrint, setSaleToPrint] = useState<VentaWithRelations | null>(null);
   const ticketRef = useRef<HTMLDivElement>(null);
   
   const { user } = useAuthStore();
+  const { isAdmin, canDeleteSales, canViewReports } = useUserRole();
   const { toast } = useToast();
 
   const handlePrint = useReactToPrint({
@@ -99,10 +108,9 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
         .from('ventas')
         .select(`
           *,
-          clients (name),
+          clients (name, whatsapp_number),
           venta_items (
-            quantity_javas,
-            subtotal,
+            *,
             products (name, type, quality)
           )
         `)
@@ -161,36 +169,30 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
   };
 
   const canEdit = (sale: VentaWithRelations) => {
-    // Si está cancelada no se edita
-    if (sale.is_cancelled) return false;
-    
-    if (user?.role === 'ADMIN') return true;
-    try {
-      const saleDate = parseISO(sale.date);
-      const isToday = isValid(saleDate) && saleDate.toDateString() === new Date().toDateString();
-      return user?.role === 'VENDEDOR' && isToday;
-    } catch {
-      return false;
-    }
+    return !sale.is_cancelled && isAdmin;
   };
 
   const canDelete = (sale: VentaWithRelations) => {
-    // Si ya está cancelada, no mostrar botón de anular
-    if (sale.is_cancelled) return false;
-
-    if (user?.role === 'ADMIN') return true;
-    try {
-      const saleDate = parseISO(sale.date);
-      const isToday = isValid(saleDate) && saleDate.toDateString() === new Date().toDateString();
-      return user?.role === 'VENDEDOR' && isToday;
-    } catch {
-      return false;
-    }
+    return !sale.is_cancelled && canDeleteSales;
   };
 
   const handleDeleteClick = (sale: VentaWithRelations) => {
     setSaleToDelete(sale);
     setDeleteDialogOpen(true);
+  };
+
+  const handleEditClick = (sale: VentaWithRelations) => {
+    // Transformar datos para que coincidan con lo que espera SaleFormSupabase (Venta)
+    const formattedSale: any = {
+        ...sale,
+        client: sale.clients, // Renombrar clients -> client
+        items: sale.venta_items.map(item => ({
+            ...item,
+            product: item.products // Renombrar products -> product
+        }))
+    };
+    setSaleToEdit(formattedSale);
+    setEditDialogOpen(true);
   };
 
   const handleConfirmDelete = async () => {
@@ -256,6 +258,7 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
         </div>
         
         <div className="flex gap-2 w-full md:w-auto">
+          {canViewReports && <DailyReportDialog />}
           <DateRangePicker
             dateRange={dateRange}
             onDateRangeChange={setDateRange}
@@ -311,6 +314,17 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
+                       {canEdit(sale) && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEditClick(sale)}
+                          title="Editar Venta"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      )}
+
                       <Button
                         variant="ghost"
                         size="icon"
@@ -342,6 +356,25 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
           </TableBody>
         </Table>
       </div>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar Venta #{saleToEdit?.id}</DialogTitle>
+          </DialogHeader>
+          
+          {saleToEdit && (
+            <SaleFormSupabase 
+                initialData={saleToEdit}
+                onSuccess={() => {
+                    setEditDialogOpen(false);
+                    fetchSales();
+                    toast({ title: 'Venta actualizada', description: 'La lista de ventas ha sido refrescada.' });
+                }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>

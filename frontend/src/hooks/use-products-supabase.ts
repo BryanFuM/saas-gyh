@@ -182,19 +182,36 @@ export function useDeleteProduct() {
 
   return useMutation({
     mutationFn: async (id: number) => {
-      // Soft delete
-      const { error } = await supabase
-        .from('products')
-        .update({ is_active: false })
-        .eq('id', id);
+      // Use RPC for smart delete (Check history first)
+      const { data, error } = await supabase
+        .rpc('delete_product_safely', { p_product_id: id });
 
       if (error) throw new Error(error.message);
+      
+      return data; // 'ARCHIVED' or 'DELETED'
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: productKeys.all });
     },
   });
 }
+
+/**
+ * Hook to check if a product has history (usage)
+ */
+export function useCheckProductUsage() {
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const { data, error } = await supabase
+        .rpc('check_product_usage', { p_product_id: id });
+
+      if (error) throw new Error(error.message);
+      
+      return data as { has_history: boolean; usage_count: number };
+    }
+  });
+}
+
 
 // ============================================
 // MUTATIONS PARA TIPOS Y CALIDADES

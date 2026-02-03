@@ -35,3 +35,10 @@ build/
 
 # Local
 *.local
+
+# Temporary/Debug Files
+context.txt
+CLEANUP_REPORT.md
+*.sql
+frontend/src/app/debug/
+

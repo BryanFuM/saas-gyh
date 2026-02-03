@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/componen
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 import { 
   Dialog,
   DialogContent,
@@ -31,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { CascadeProductSelect } from '@/components/ui/cascade-product-select';
 import { ClientSelect } from '@/components/ui/searchable-select';
 import { Plus, Trash2, Printer, Save, Scale, UserPlus, AlertTriangle, User } from 'lucide-react';
 import { TicketTemplate } from './ticket-template';
@@ -40,7 +42,7 @@ import { useReactToPrint } from 'react-to-print';
 import { useProducts, useProductTypes } from '@/hooks/use-products-supabase';
 import { useClients, useCreateClient } from '@/hooks/use-clients-supabase';
 import { useStock } from '@/hooks/use-stock-supabase';
-import { useCreateVenta } from '@/hooks/use-ventas-supabase';
+import { useCreateVenta, useUpdateVenta, type Venta } from '@/hooks/use-ventas-supabase';
 import { useAuthStore } from '@/store/auth-store';
 
 interface SaleItem {
@@ -49,6 +51,7 @@ interface SaleItem {
   product_type: string | null;   // Paso 2: Tipo específico dentro del nombre
   product_id: number | null;     // Paso 3: Producto específico (con calidad)
   quantity_kg: string;
+  quantity_javas: string;        // 🆕 Javas explícitas
   price_per_kg: string;
   hasStockWarning: boolean;      // ⚠️ Stock insuficiente
 }
@@ -59,6 +62,7 @@ const createEmptyItem = (): SaleItem => ({
   product_type: null,
   product_id: null,
   quantity_kg: '',
+  quantity_javas: '', // 🆕 Inicialmente vacío, se calculará al poner Kilos
   price_per_kg: '',
   hasStockWarning: false,
 });
@@ -73,7 +77,7 @@ const parseNumericInput = (value: string): string => {
   return cleaned;
 };
 
-export function SaleFormSupabase({ onSuccess }: { onSuccess: () => void }) {
+export function SaleFormSupabase({ onSuccess, initialData }: { onSuccess: () => void, initialData?: Venta }) {
   const { toast } = useToast();
   const user = useAuthStore((state) => state.user);
   
@@ -83,15 +87,52 @@ export function SaleFormSupabase({ onSuccess }: { onSuccess: () => void }) {
   const { data: clients = [], refetch: refetchClients } = useClients();
   const { data: stock } = useStock();
   const createVenta = useCreateVenta();
+  const updateVenta = useUpdateVenta();
   const createClientMutation = useCreateClient();
   
+  // Helper to map DB items to UI items
+  const mapInitialItems = (): SaleItem[] => {
+    if (!initialData?.items || initialData.items.length === 0) {
+      return [createEmptyItem()];
+    }
+    return initialData.items.map(item => ({
+      id: crypto.randomUUID(),
+      product_name: null, // Will be filled by CascadeProductSelect logic if needed, but we rely on product_id
+      product_type: null,
+      product_id: item.product_id,
+      quantity_kg: item.quantity_kg.toString(),
+      quantity_javas: item.quantity_javas.toString(), // 🆕 Recuperar del backend
+      price_per_kg: item.price_per_kg.toString(),
+      hasStockWarning: false 
+    }));
+  };
+
   // Form state
-  const [mode, setMode] = useState<'CAJA' | 'PEDIDO'>('CAJA');
-  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
-  const [guestClientName, setGuestClientName] = useState('');  // 🆕 Cliente eventual
-  const [paymentMethod, setPaymentMethod] = useState<'EFECTIVO' | 'YAPE'>('EFECTIVO');
-  const [amortization, setAmortization] = useState('');
-  const [items, setItems] = useState<SaleItem[]>([createEmptyItem()]);
+  const [mode, setMode] = useState<'CAJA' | 'PEDIDO'>(
+    initialData ? (initialData.type as 'CAJA' | 'PEDIDO') : 'CAJA'
+  );
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(
+    initialData?.client_id || null
+  );
+  const [guestClientName, setGuestClientName] = useState(
+    initialData?.guest_client_name || ''
+  );  // 🆕 Cliente eventual
+  
+  const [paymentMethod, setPaymentMethod] = useState<'EFECTIVO' | 'YAPE' | 'PLIN' | 'TRANSFERENCIA'>(
+    (initialData?.payment_method as any) || 'EFECTIVO'
+  );
+  
+  const [amortization, setAmortization] = useState(
+    initialData?.amortization ? initialData.amortization.toString() : ''
+  );
+  
+  const [amortizationMethod, setAmortizationMethod] = useState<'EFECTIVO' | 'YAPE' | 'PLIN' | 'TRANSFERENCIA'>(
+    initialData?.type === 'PEDIDO' && initialData?.payment_method !== 'CREDITO' 
+      ? (initialData.payment_method as any) 
+      : 'EFECTIVO'
+  ); // 🆕 Método para amortización
+  
+  const [items, setItems] = useState<SaleItem[]>(mapInitialItems());
   const [lastSale, setLastSale] = useState<any>(null);
   
   // Modal states
@@ -115,27 +156,6 @@ export function SaleFormSupabase({ onSuccess }: { onSuccess: () => void }) {
     return map;
   }, [stock]);
 
-  // Get unique product NAMES (Kion, Manzana, etc. - from name field)
-  const uniqueProductNames = useMemo(() => {
-    const names = new Set(products.map(p => p.name));
-    return Array.from(names).sort();
-  }, [products]);
-
-  // Get unique TYPES for a given product name (Chino, Fuji, etc.)
-  const getTypesForProductName = useCallback((productName: string | null) => {
-    if (!productName) return [];
-    const productsWithName = products.filter(p => p.name === productName);
-    const types = new Set(productsWithName.map(p => p.type));
-    return Array.from(types).sort();
-  }, [products]);
-
-  // Get products filtered by name and type (for cascade step 3 - qualities)
-  const getProductsByNameAndType = useCallback((productName: string | null, productType: string | null) => {
-    if (!productName) return [];
-    if (!productType) return products.filter(p => p.name === productName);
-    return products.filter(p => p.name === productName && p.type === productType);
-  }, [products]);
-
   const selectedClient = useMemo(() => 
     clients.find((c) => c.id === selectedClientId) || null,
     [clients, selectedClientId]
@@ -155,10 +175,12 @@ export function SaleFormSupabase({ onSuccess }: { onSuccess: () => void }) {
   const calculateItemValues = useCallback((item: SaleItem) => {
     const quantityKg = parseFloat(item.quantity_kg) || 0;
     const pricePerKg = parseFloat(item.price_per_kg) || 0;
+    // 🆕 Usar valor explícito si existe, sino 0 (no autocalculamos aquí para visualización, confiamos en el input)
+    const quantityJavas = parseFloat(item.quantity_javas) || 0; 
+    
     const product = getProductById(item.product_id);
     const conversionFactor = product?.conversion_factor || 17;  // Default 17 kg/java
     
-    const quantityJavas = quantityKg / conversionFactor;
     const subtotal = quantityKg * pricePerKg;
     
     return { quantityKg, quantityJavas, pricePerKg, subtotal, conversionFactor };
@@ -202,102 +224,69 @@ export function SaleFormSupabase({ onSuccess }: { onSuccess: () => void }) {
     });
   };
 
-  // 🔄 Handle cascade: when product NAME changes (first step)
-  const handleProductNameChange = (index: number, name: string | null) => {
-    const typesForName = getTypesForProductName(name);
-    const productsWithName = products.filter(p => p.name === name);
-    
-    // Si solo hay un producto con ese nombre, seleccionarlo automáticamente
-    if (productsWithName.length === 1) {
-      updateItem(index, { 
-        product_name: name, 
-        product_type: productsWithName[0].type,
-        product_id: productsWithName[0].id,
-        hasStockWarning: false,
-      });
-    } else if (typesForName.length === 1) {
-      // Si solo hay un tipo, seleccionarlo y verificar calidades
-      const productsOfType = products.filter(p => p.name === name && p.type === typesForName[0]);
-      if (productsOfType.length === 1) {
-        updateItem(index, { 
-          product_name: name, 
-          product_type: typesForName[0],
-          product_id: productsOfType[0].id,
-          hasStockWarning: false,
-        });
-      } else {
-        updateItem(index, { 
-          product_name: name, 
-          product_type: typesForName[0],
-          product_id: null,
-          hasStockWarning: false,
-        });
-      }
-    } else {
-      updateItem(index, { 
-        product_name: name, 
-        product_type: null,
-        product_id: null,
-        hasStockWarning: false,
-      });
-    }
-  };
-
-  // 🔄 Handle cascade: when product TYPE changes (second step)
-  const handleTypeChange = (index: number, type: string | null) => {
-    const item = items[index];
-    const productsOfType = products.filter(p => p.name === item.product_name && p.type === type);
-    
-    // Si solo hay un producto de este tipo, seleccionarlo automáticamente
-    if (productsOfType.length === 1) {
-      updateItem(index, { 
-        product_type: type, 
-        product_id: productsOfType[0].id,
-        hasStockWarning: false,
-      });
-    } else {
-      updateItem(index, { 
-        product_type: type, 
-        product_id: null,
-        hasStockWarning: false,
-      });
-    }
-  };
-
   // 🆕 Handle product selection and check stock
   const handleProductChange = (index: number, productId: number | null) => {
-    updateItem(index, { product_id: productId, hasStockWarning: false });
+    // Si ya había kilos, recalcular javas con el factor del nuevo producto
+    let updates: Partial<SaleItem> = { product_id: productId, hasStockWarning: false };
+    
+    if (productId && items[index].quantity_kg) {
+        const product = products.find(p => p.id === productId);
+        if (product) {
+            const factor = product.conversion_factor || 17;
+            const kg = parseFloat(items[index].quantity_kg);
+            updates.quantity_javas = (kg / factor).toFixed(2);
+        }
+    }
+    
+    updateItem(index, updates);
   };
 
   // Handle numeric input with proper formatting
-  const handleNumericInput = (index: number, field: 'quantity_kg' | 'price_per_kg', value: string) => {
+  const handleNumericInput = (index: number, field: 'quantity_kg' | 'price_per_kg' | 'quantity_javas', value: string) => {
     if (value === '' || /^\d*\.?\d*$/.test(value)) {
       const cleaned = parseNumericInput(value);
-      updateItem(index, { [field]: cleaned });
       
-      // 🆕 Check stock when quantity changes
+      // Update the changed field
+      const updates: Partial<SaleItem> = { [field]: cleaned };
+      
+      // 🧠 LOGICA INTELIGENTE:
+      // 1. Si cambiamos KG -> Sugerir Javas (autocalcular)
       if (field === 'quantity_kg') {
-        const item = items[index];
-        if (item.product_id && cleaned) {
+          const item = items[index];
           const product = getProductById(item.product_id);
-          const conversionFactor = product?.conversion_factor || 17;  // Default 17 kg/java
-          const quantityJavas = parseFloat(cleaned) / conversionFactor;
+          
+          if (product && cleaned) {
+             const conversionFactor = product.conversion_factor || 17;
+             // Auto-suggest javas derived from KG
+             const suggestedJavas = (parseFloat(cleaned) / conversionFactor).toFixed(2);
+             // Solo actualizamos javas si el usuario no lo ha escrito manualmente (o simple overwrite strategy)
+             // Estrategia simplificada: Overwrite Javas when KG changes to keep them in sync by default
+             updates.quantity_javas = suggestedJavas;
+          }
+      }
+      
+      // 2. Si cambiamos Javas -> NO TOCAMOS KG (Desvinculación intencional)
+      // (El usuario está corrigiendo manualmente las javas reales)
+      
+      updateItem(index, updates);
+      
+      // 🆕 Check stock when quantity (javas) changes
+      if (field === 'quantity_kg' || field === 'quantity_javas') {
+        // Necesitamos el estado "futuro" para validar
+        // Usamos setTimeout para no bloquear el render actual o recalculamos con el valor nuevo
+        // Aproximación: recalcular con 'cleaned' y el resto del estado
+        const item = items[index];
+        const javasToCheck = field === 'quantity_javas' 
+             ? parseFloat(cleaned) 
+             : (updates.quantity_javas ? parseFloat(updates.quantity_javas) : 0);
+             
+        if (item.product_id) {
           const stockAvailable = getStockForProduct(item.product_id);
           
-          // Si cantidad > stock, mostrar warning pero NO bloquear
-          if (quantityJavas > stockAvailable) {
-            updateItem(index, { 
-              [field]: cleaned, 
-              hasStockWarning: true 
-            });
-            toast({
-              variant: 'default',
-              title: '⚠️ Stock Insuficiente',
-              description: `Disponible: ${stockAvailable.toFixed(2)} javas. Se registrará en negativo.`,
-              className: 'bg-yellow-50 border-yellow-200',
-            });
+          if (javasToCheck > stockAvailable) {
+             updateItem(index, { ...updates, hasStockWarning: true });
           } else {
-            updateItem(index, { [field]: cleaned, hasStockWarning: false });
+             updateItem(index, { ...updates, hasStockWarning: false });
           }
         }
       }
@@ -318,6 +307,17 @@ export function SaleFormSupabase({ onSuccess }: { onSuccess: () => void }) {
     // En modo PEDIDO, cliente obligatorio
     if (mode === 'PEDIDO' && !selectedClientId) {
       return 'Selecciona un cliente para el pedido';
+    }
+
+    // 🛡️ Bug fix: Validación de amortización
+    if (mode === 'PEDIDO') {
+      const amort = parseFloat(amortization) || 0;
+      const totalAmount = Number(totals.amount.toFixed(2));
+      
+      // Permitimos margen de error de 0.01 por punto flotante
+      if (amort > totalAmount + 0.01) {
+        return `La amortización (S/ ${amort.toFixed(2)}) no puede ser mayor al total (S/ ${totalAmount})`;
+      }
     }
 
     for (let i = 0; i < items.length; i++) {
@@ -362,25 +362,86 @@ export function SaleFormSupabase({ onSuccess }: { onSuccess: () => void }) {
     const ventaItems = items.map(item => ({
       product_id: item.product_id!,
       quantity_kg: parseFloat(item.quantity_kg),
+      quantity_javas: parseFloat(item.quantity_javas) || 0, // 🆕 ENVIAMOS JAVAS EXPLÍCITAS
       price_per_kg: parseFloat(item.price_per_kg),
     }));
 
-    try {
-      const result = await createVenta.mutateAsync({
+    // Determinar el método de pago real
+    // Si es CAJA: usa paymentMethod (pago completo)
+    // Si es PEDIDO y hay amortización: usa amortizationMethod (pago parcial)
+    // Si es PEDIDO y NO hay amortización: se va como CREDITO
+    const finalPaymentMethod: 'EFECTIVO' | 'YAPE' | 'CREDITO' | 'PLIN' | 'TRANSFERENCIA' = mode === 'CAJA' 
+      ? paymentMethod 
+      : (parseFloat(amortization) > 0 ? amortizationMethod : 'CREDITO');
+
+    const commonData = {
         type: mode,
         client_id: mode === 'PEDIDO' ? selectedClientId : null,
         guest_client_name: mode === 'CAJA' ? (guestClientName.trim() || null) : null,
         user_id: user.id,
-        payment_method: mode === 'CAJA' ? paymentMethod : 'CREDITO',
-        amortization: mode === 'PEDIDO' ? (parseFloat(amortization) || 0) : 0,
+        payment_method: finalPaymentMethod,
+        amortization: mode === 'PEDIDO' ? Math.min(parseFloat(amortization) || 0, Number(totals.amount.toFixed(2))) : 0,
         items: ventaItems,
-      });
+    };
 
-      setLastSale(result);
+    try {
+      let result;
+      if (initialData) {
+        result = await updateVenta.mutateAsync({
+          venta_id: initialData.id,
+          ...commonData
+        });
+      } else {
+        result = await createVenta.mutateAsync(commonData);
+      }
+
+      // 🛠️ Construct full sale object for printing immediately
+      const fullSaleData = {
+         id: result.venta_id,
+         date: new Date().toISOString(),
+         type: mode,
+         total_amount: result.total_amount || totals.amount,
+         previous_debt: result.previous_debt,
+         new_debt: result.new_debt,
+         payment_method: finalPaymentMethod,
+         client: mode === 'PEDIDO' ? selectedClient : null,
+         guest_client_name: mode === 'CAJA' ? (guestClientName || 'Cliente Eventual') : null,
+         items: items.map(item => {
+            const product = getProductById(item.product_id);
+            const vals = calculateItemValues(item);
+            return {
+                product_id: item.product_id,
+                product_name: product?.name || 'Producto',
+                product_type: product?.type,
+                product_quality: product?.quality,
+                quantity_javas: vals.quantityJavas,
+                unit_sale_price: vals.pricePerKg * vals.conversionFactor, // Approximate java price or just display what we have
+                // TicketTemplate uses unit_sale_price but our item has price_per_kg.
+                // Let's pass enough info for the template to decide.
+                price_per_kg: vals.pricePerKg,
+                subtotal: vals.subtotal,
+                products: product // Nested for template compatibility
+            };
+         })
+      };
+
+      setLastSale(fullSaleData);
       
       toast({
-        title: '✅ Venta Exitosa',
-        description: `Venta #${result.venta_id} registrada. Total: S/ ${result.total_amount?.toFixed(2)}`,
+        title: initialData ? '✅ Actualización Exitosa' : '✅ Venta Exitosa',
+        description: `Venta #${result.venta_id} ${initialData ? 'actualizada' : 'registrada'}. Total: S/ ${(result.total_amount || totals.amount).toFixed(2)}`,
+        action: (
+            <ToastAction altText="Imprimir Ticket" onClick={() => {
+                // We need to wait for state to settle? 
+                // handlePrint reads the ref. The ref content depends on setLastSale.
+                // React batching might delay it. But typically fine for user click.
+                // If auto-print logic runs, it uses setTimeout.
+                setTimeout(() => handlePrint(), 100);
+            }}>
+                <Printer className="h-4 w-4 mr-2" />
+                Imprimir
+            </ToastAction>
+        )
       });
 
       if (shouldPrintAfterSave) {
@@ -503,6 +564,8 @@ export function SaleFormSupabase({ onSuccess }: { onSuccess: () => void }) {
                     <SelectContent>
                       <SelectItem value="EFECTIVO">💵 Efectivo</SelectItem>
                       <SelectItem value="YAPE">📱 Yape</SelectItem>
+                      <SelectItem value="PLIN">📱 Plin</SelectItem>
+                      <SelectItem value="TRANSFERENCIA">🏦 Transferencia</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -511,23 +574,60 @@ export function SaleFormSupabase({ onSuccess }: { onSuccess: () => void }) {
 
             {/* Amortización (solo PEDIDO) */}
             {mode === 'PEDIDO' && selectedClient && (
-              <div className="space-y-2 p-4 bg-blue-50 rounded-lg">
-                <Label>Pago a cuenta (Amortización)</Label>
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={amortization}
-                  onChange={(e) => {
-                    if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) {
-                      setAmortization(e.target.value);
-                    }
-                  }}
-                  placeholder="0.00"
-                  disabled={createVenta.isPending}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Si el cliente paga algo ahora, ingresa el monto aquí.
-                </p>
+              <div className="space-y-4 p-4 bg-blue-50 rounded-lg">
+                <div className="space-y-2">
+                  <Label>Pago a cuenta (Amortización)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={amortization}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        // Permitir vacio o formato decimal
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                          setAmortization(val);
+                          
+                          // Validación no bloqueante inmediata
+                          const num = parseFloat(val);
+                          const currentTotal = Number(totals.amount.toFixed(2));
+                          
+                          if (!isNaN(num) && num > currentTotal) {
+                            toast({
+                              variant: 'destructive',
+                              title: 'Cuidado',
+                              description: `El monto (S/ ${num}) supera el total (S/ ${currentTotal}). Ajusta el valor.`
+                            });
+                          }
+                        }
+                      }}
+                      placeholder="0.00"
+                      disabled={createVenta.isPending}
+                    />
+                    
+                    {(parseFloat(amortization) > 0) && (
+                      <div className="w-[180px]">
+                        <Select 
+                          value={amortizationMethod} 
+                          onValueChange={(v) => setAmortizationMethod(v as any)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Medio de Pago" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="EFECTIVO">💵 Efectivo</SelectItem>
+                            <SelectItem value="YAPE">📱 Yape</SelectItem>
+                            <SelectItem value="PLIN">📱 Plin</SelectItem>
+                            <SelectItem value="TRANSFERENCIA">🏦 Transferencia</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Si el cliente paga algo ahora, ingresa el monto aquí.
+                  </p>
+                </div>
               </div>
             )}
 
@@ -546,15 +646,6 @@ export function SaleFormSupabase({ onSuccess }: { onSuccess: () => void }) {
                 const stockAvailable = getStockForProduct(item.product_id);
                 const stockKg = stockAvailable * values.conversionFactor;
                 
-                // Obtener tipos disponibles para el nombre seleccionado
-                // Obtener tipos disponibles para el nombre seleccionado
-                const typesForName = getTypesForProductName(item.product_name);
-                const hasMultipleTypes = typesForName.length > 1;
-                
-                // Obtener productos disponibles para nombre+tipo seleccionado
-                const productsOfNameAndType = getProductsByNameAndType(item.product_name, item.product_type);
-                const hasMultipleQualities = productsOfNameAndType.length > 1;
-                
                 return (
                   <div 
                     key={item.id} 
@@ -564,98 +655,15 @@ export function SaleFormSupabase({ onSuccess }: { onSuccess: () => void }) {
                         : 'bg-gray-50/50'
                     }`}
                   >
-                    {/* 🆕 SELECTOR EN CASCADA: Nombre > Tipo > Calidad */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      {/* Paso 1: Nombre del Producto (Kion, Manzana, etc.) */}
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium">Nombre</Label>
-                        <Select
-                          value={item.product_name || ''}
-                          onValueChange={(v) => handleProductNameChange(index, v || null)}
-                          disabled={createVenta.isPending}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Seleccionar..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {uniqueProductNames.map((name) => (
-                              <SelectItem key={name} value={name}>
-                                {name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {/* Paso 2: Tipo (Chino, Fuji, etc. - solo si hay más de uno) */}
-                      {item.product_name && hasMultipleTypes && (
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">Tipo</Label>
-                          <Select
-                            value={item.product_type || ''}
-                            onValueChange={(v) => handleTypeChange(index, v || null)}
-                            disabled={createVenta.isPending}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar tipo..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {typesForName.map((type) => (
-                                <SelectItem key={type} value={type}>
-                                  {type}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-
-                      {/* Paso 3: Calidad (Primera, Segunda, etc. - solo si hay más de una) */}
-                      {item.product_name && item.product_type && hasMultipleQualities && (
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">Calidad</Label>
-                          <Select
-                            value={item.product_id?.toString() || ''}
-                            onValueChange={(v) => handleProductChange(index, v ? parseInt(v) : null)}
-                            disabled={createVenta.isPending}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar calidad..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {productsOfNameAndType.map((p) => (
-                                <SelectItem key={p.id} value={p.id.toString()}>
-                                  {p.quality} - Stock: {(stockMap[p.id] || 0).toFixed(2)} javas
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Producto seleccionado (nombre completo): Nombre - Tipo (Calidad) */}
-                    {item.product_id && (
-                      <div className="bg-blue-50 rounded px-3 py-2">
-                        <span className="text-sm font-medium text-blue-700">
-                          📦 {getProductById(item.product_id)?.name}
-                          {getProductById(item.product_id)?.type && (
-                            <span className="text-blue-600"> - {getProductById(item.product_id)?.type}</span>
-                          )}
-                          {getProductById(item.product_id)?.quality && getProductById(item.product_id)?.quality !== 'Sin Clasificar' && (
-                            <span className="text-blue-500"> ({getProductById(item.product_id)?.quality})</span>
-                          )}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Stock info */}
-                    {item.product_id && (
-                      <p className={`text-xs ${item.hasStockWarning ? 'text-yellow-700 font-medium' : 'text-muted-foreground'}`}>
-                        {item.hasStockWarning && <AlertTriangle className="h-3 w-3 inline mr-1" />}
-                        Stock: {stockAvailable.toFixed(2)} javas ({stockKg.toFixed(1)} kg)
-                      </p>
-                    )}
+                    {/* 🆕 SELECTOR EN CASCADA COMPONETIZADO */}
+                    <CascadeProductSelect 
+                      products={products}
+                      selectedProductId={item.product_id}
+                      onSelect={(id) => handleProductChange(index, id)}
+                      disabled={createVenta.isPending}
+                      currentStock={stockAvailable}
+                      stockWarning={item.hasStockWarning}
+                    />
                     
                     {/* Cantidad, Precio, Subtotal */}
                     <div className="flex flex-wrap gap-3 items-end">
@@ -672,6 +680,22 @@ export function SaleFormSupabase({ onSuccess }: { onSuccess: () => void }) {
                           placeholder="0"
                           className={item.hasStockWarning ? 'border-yellow-400' : ''}
                         />
+
+                      {/* 🆕 NUEVO INPUT JAVAS (Editable) */}
+                      <div className="w-24 space-y-2">
+                        <Label className="text-sm flex items-center gap-1">
+                          📦 Javas
+                        </Label>
+                        <Input 
+                          type="text"
+                          inputMode="decimal"
+                          value={item.quantity_javas}
+                          onChange={(e) => handleNumericInput(index, 'quantity_javas', e.target.value)}
+                          placeholder="0"
+                          className={`bg-blue-50/50 ${item.hasStockWarning ? 'border-yellow-400' : ''}`}
+                        />
+                      </div>
+
                       </div>
                       <div className="w-28 space-y-2">
                         <Label className="text-sm">Precio/KG (S/.)</Label>

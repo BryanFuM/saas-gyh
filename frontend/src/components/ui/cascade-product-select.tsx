@@ -1,271 +1,245 @@
-"use client"
+'use client';
 
-import * as React from "react"
-import { Check, ChevronsUpDown, AlertCircle } from "lucide-react"
-
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { Package, AlertTriangle } from 'lucide-react';
+import { Label } from '@/components/ui/label';
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { Label } from "@/components/ui/label"
-import type { Product, StockInfo } from "@/lib/types"
-
-// Productos que NO tienen variantes (selector 2 se oculta)
-const PRODUCTS_WITHOUT_VARIANTS = ['Coco', 'Zapallo', 'Palillo'];
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Product } from '@/hooks/use-products-supabase';
 
 interface CascadeProductSelectProps {
   products: Product[];
-  stockMap: Record<number, number>; // product_id -> stock_javas
-  value: number | null;
+  selectedProductId: number | null;
   onSelect: (productId: number | null) => void;
   disabled?: boolean;
-  showStockWarning?: boolean; // Mostrar advertencia de stock negativo
+  currentStock?: number;
+  stockWarning?: boolean;
 }
 
-/**
- * Selector de productos en cascada:
- * Select 1: Producto (Kion, Zapallo, Coco...)
- * Select 2: Calidad/Variante (filtrado según Select 1)
- * 
- * Nota: Coco, Zapallo y Palillo no tienen variantes (Select 2 oculto)
- */
 export function CascadeProductSelect({
   products,
-  stockMap,
-  value,
+  selectedProductId,
   onSelect,
-  disabled = false,
-  showStockWarning = true,
+  disabled,
+  currentStock,
+  stockWarning
 }: CascadeProductSelectProps) {
-  const [productNameOpen, setProductNameOpen] = React.useState(false);
-  const [variantOpen, setVariantOpen] = React.useState(false);
-  const [selectedProductName, setSelectedProductName] = React.useState<string | null>(null);
+  const [selectedName, setSelectedName] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<string | null>(null);
+  
+  // Ref to track if the state change was internal (user interaction) or external (reset/prop change)
+  const isInternalChange = useRef(false);
 
-  // Obtener nombres únicos de productos
-  const productNames = React.useMemo(() => {
-    const names = Array.from(new Set(products.map(p => p.name)));
-    return names.sort();
+  // 1. Get Unique Names
+  const uniqueNames = useMemo(() => {
+    const names = new Set(products.map(p => p.name));
+    return Array.from(names).sort();
   }, [products]);
 
-  // Filtrar variantes según producto seleccionado
-  const variants = React.useMemo(() => {
-    if (!selectedProductName) return [];
+  // 2. Get Types for selected Name
+  const availableTypes = useMemo(() => {
+    if (!selectedName) return [];
+    const types = new Set(
+      products
+        .filter(p => p.name === selectedName)
+        .map(p => p.type)
+    );
+    return Array.from(types).sort();
+  }, [products, selectedName]);
+
+  // 3. Get Products (Qualities) for selected Name + Type
+  const availableProducts = useMemo(() => {
+    if (!selectedName) return [];
+    // If we have a type, filter by it.
+    if (!selectedType) {
+        return [];
+    }
     return products
-      .filter(p => p.name === selectedProductName)
-      .sort((a, b) => `${a.type}-${a.quality}`.localeCompare(`${b.type}-${b.quality}`));
-  }, [products, selectedProductName]);
+      .filter(p => p.name === selectedName && p.type === selectedType)
+      .sort((a, b) => a.quality.localeCompare(b.quality));
+  }, [products, selectedName, selectedType]);
 
-  // Verificar si el producto actual tiene variantes
-  const hasVariants = React.useMemo(() => {
-    return selectedProductName && !PRODUCTS_WITHOUT_VARIANTS.includes(selectedProductName);
-  }, [selectedProductName]);
+  const selectedProduct = useMemo(() => 
+    products.find(p => p.id === selectedProductId),
+    [products, selectedProductId]
+  );
 
-  // Producto seleccionado actual
-  const selectedProduct = React.useMemo(() => {
-    if (!value) return null;
-    return products.find(p => p.id === value);
-  }, [products, value]);
-
-  // Stock del producto seleccionado
-  const currentStock = React.useMemo(() => {
-    if (!value) return 0;
-    return stockMap[value] || 0;
-  }, [stockMap, value]);
-
-  // Sincronizar estado cuando cambia el valor externo
-  React.useEffect(() => {
-    if (selectedProduct) {
-      setSelectedProductName(selectedProduct.name);
-    }
-  }, [selectedProduct]);
-
-  // Manejar selección de nombre de producto
-  const handleProductNameSelect = (name: string | null) => {
-    setSelectedProductName(name);
-    setProductNameOpen(false);
-    
-    if (!name) {
-      onSelect(null);
-      return;
-    }
-
-    // Si el producto no tiene variantes, seleccionar automáticamente
-    if (PRODUCTS_WITHOUT_VARIANTS.includes(name)) {
-      const product = products.find(p => p.name === name);
+  // Sync state with value prop (selectedProductId)
+  useEffect(() => {
+    if (selectedProductId) {
+      const product = products.find(p => p.id === selectedProductId);
       if (product) {
-        onSelect(product.id);
+        setSelectedName(product.name);
+        setSelectedType(product.type);
       }
     } else {
-      // Limpiar selección si cambia el producto base
-      if (selectedProduct?.name !== name) {
+      // If external clear (not caused by our internal change), clear visual state
+      if (!isInternalChange.current) {
+        setSelectedName(null);
+        setSelectedType(null);
+      }
+      // Reset flag
+      isInternalChange.current = false;
+    }
+  }, [selectedProductId, products]);
+
+  // Handle Name Change
+  const handleNameChange = (name: string) => {
+    isInternalChange.current = true;
+    
+    const types = new Set(products.filter(p => p.name === name).map(p => p.type));
+    const typesArray = Array.from(types);
+    const productsWithName = products.filter(p => p.name === name);
+
+    // Auto-select logic
+    if (productsWithName.length === 1) {
+      const p = productsWithName[0];
+      setSelectedName(name);
+      setSelectedType(p.type);
+      onSelect(p.id);
+    } else if (typesArray.length === 1) {
+      const type = typesArray[0];
+      const productsOfType = products.filter(p => p.name === name && p.type === type);
+      
+      setSelectedName(name);
+      setSelectedType(type);
+      
+      if (productsOfType.length === 1) {
+        onSelect(productsOfType[0].id);
+      } else {
         onSelect(null);
       }
+    } else {
+      setSelectedName(name);
+      setSelectedType(null); // Reset type
+      onSelect(null); // Reset ID
     }
   };
 
-  // Manejar selección de variante
-  const handleVariantSelect = (productId: number | null) => {
-    onSelect(productId);
-    setVariantOpen(false);
+  // Handle Type Change
+  const handleTypeChange = (type: string) => {
+    isInternalChange.current = true;
+    const productsOfType = products.filter(p => p.name === selectedName && p.type === type);
+
+    setSelectedType(type);
+
+    if (productsOfType.length === 1) {
+      onSelect(productsOfType[0].id);
+    } else {
+      onSelect(null);
+    }
   };
 
-  // Obtener stock para mostrar en dropdown
-  const getStockDisplay = (productId: number) => {
-    const stock = stockMap[productId] || 0;
-    const isNegative = stock < 0;
-    return {
-      value: stock,
-      display: `${stock.toFixed(2)} javas`,
-      isNegative,
-      className: isNegative ? 'text-red-500 font-medium' : 'text-muted-foreground'
-    };
+  // Handle Quality (Product) Change
+  const handleQualityChange = (productIdStr: string) => {
+    isInternalChange.current = true;
+    onSelect(parseInt(productIdStr));
   };
+
+  const showTypeDropdown = !!selectedName && availableTypes.length > 1;
+  const showQualityDropdown = !!selectedName && !!selectedType && availableProducts.length > 1;
 
   return (
-    <div className="space-y-3">
-      {/* Select 1: Producto */}
-      <div className="space-y-2">
-        <Label className="text-sm font-medium">Producto</Label>
-        <Popover open={productNameOpen} onOpenChange={setProductNameOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              role="combobox"
-              aria-expanded={productNameOpen}
-              disabled={disabled}
-              className="w-full justify-between"
+    <div className="w-full">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+        {/* 1. Name */}
+        <div className="space-y-2">
+            <Label className="text-sm font-medium text-foreground">Nombre</Label>
+            <Select 
+                value={selectedName || ''} 
+                onValueChange={handleNameChange}
+                disabled={disabled}
             >
-              <span className="truncate">
-                {selectedProductName || "Seleccionar producto..."}
-              </span>
-              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-[300px] p-0">
-            <Command>
-              <CommandInput placeholder="Buscar producto..." />
-              <CommandList>
-                <CommandEmpty>No se encontró el producto.</CommandEmpty>
-                <CommandGroup>
-                  {productNames.map((name) => (
-                    <CommandItem
-                      key={name}
-                      value={name}
-                      onSelect={() => handleProductNameSelect(name === selectedProductName ? null : name)}
-                    >
-                      <Check
-                        className={cn(
-                          "mr-2 h-4 w-4",
-                          selectedProductName === name ? "opacity-100" : "opacity-0"
-                        )}
-                      />
-                      <span>{name}</span>
-                      {PRODUCTS_WITHOUT_VARIANTS.includes(name) && (
-                        <span className="ml-2 text-xs text-muted-foreground">(sin variantes)</span>
-                      )}
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
+                <SelectTrigger className="bg-white">
+                    <SelectValue placeholder="Seleccionar..." />
+                </SelectTrigger>
+                <SelectContent>
+                    {uniqueNames.map(name => (
+                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+        </div>
+
+        {/* 2. Type */}
+        {showTypeDropdown && (
+            <div className="space-y-2">
+                <Label className="text-sm font-medium text-foreground">Tipo</Label>
+                <Select 
+                    value={selectedType || ''} 
+                    onValueChange={handleTypeChange}
+                    disabled={disabled}
+                >
+                    <SelectTrigger className="bg-white">
+                        <SelectValue placeholder="Seleccionar tipo..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {availableTypes.map(type => (
+                            <SelectItem key={type} value={type}>{type}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+        )}
+
+        {/* 3. Quality */}
+        {showQualityDropdown && (
+            <div className="space-y-2">
+                <Label className="text-sm font-medium text-foreground">Calidad</Label>
+                <Select 
+                    value={selectedProductId?.toString() || ''} 
+                    onValueChange={handleQualityChange}
+                    disabled={disabled}
+                >
+                    <SelectTrigger className="bg-white">
+                        <SelectValue placeholder="Seleccionar calidad..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {availableProducts.map(p => (
+                            <SelectItem key={p.id} value={p.id.toString()}>
+                                {p.quality}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+        )}
       </div>
 
-      {/* Select 2: Calidad/Variante (solo si tiene variantes) */}
-      {hasVariants && (
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">Calidad / Variante</Label>
-          <Popover open={variantOpen} onOpenChange={setVariantOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                role="combobox"
-                aria-expanded={variantOpen}
-                disabled={disabled || !selectedProductName}
-                className="w-full justify-between"
-              >
-                <span className="truncate">
-                  {selectedProduct 
-                    ? `${selectedProduct.type} - ${selectedProduct.quality}`
-                    : "Seleccionar variante..."}
-                </span>
-                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[350px] p-0">
-              <Command>
-                <CommandInput placeholder="Buscar variante..." />
-                <CommandList>
-                  <CommandEmpty>No se encontraron variantes.</CommandEmpty>
-                  <CommandGroup>
-                    {variants.map((variant) => {
-                      const stockInfo = getStockDisplay(variant.id);
-                      return (
-                        <CommandItem
-                          key={variant.id}
-                          value={`${variant.type}-${variant.quality}`}
-                          onSelect={() => handleVariantSelect(variant.id === value ? null : variant.id)}
-                        >
-                          <Check
-                            className={cn(
-                              "mr-2 h-4 w-4",
-                              value === variant.id ? "opacity-100" : "opacity-0"
-                            )}
-                          />
-                          <div className="flex flex-col flex-1">
-                            <span className="font-medium">
-                              {variant.type} - {variant.quality}
-                            </span>
-                            <span className={cn("text-xs", stockInfo.className)}>
-                              Stock: {stockInfo.display}
-                              {stockInfo.isNegative && " ⚠️"}
-                            </span>
-                          </div>
-                        </CommandItem>
-                      );
-                    })}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
-        </div>
-      )}
-
-      {/* Información de stock con advertencia visual */}
-      {selectedProduct && showStockWarning && (
-        <div className={cn(
-          "flex items-center gap-2 text-xs p-2 rounded-md",
-          currentStock < 0 
-            ? "bg-red-50 text-red-700 border border-red-200" 
-            : currentStock < 10 
-              ? "bg-yellow-50 text-yellow-700 border border-yellow-200"
-              : "bg-green-50 text-green-700 border border-green-200"
-        )}>
-          {currentStock < 0 && <AlertCircle className="h-4 w-4" />}
-          <span>
-            Stock: <strong>{currentStock.toFixed(2)} javas</strong>
-            {" "}({(currentStock * selectedProduct.conversion_factor).toFixed(1)} kg)
-          </span>
-          {currentStock < 0 && (
-            <span className="ml-auto font-medium">Stock negativo</span>
-          )}
+      {/* Blue Summary Card (Standardized) */}
+      {selectedProduct && (
+        <div className="mt-4">
+          <div className="bg-blue-50 border border-blue-100 rounded-md p-3 flex items-start gap-3 shadow-sm">
+             <div className="bg-blue-100 p-2 rounded-full">
+               <Package className="h-5 w-5 text-blue-600" />
+             </div>
+             <div>
+               <p className="text-sm font-semibold text-blue-900 leading-tight">
+                  {selectedProduct.name}
+                  {selectedProduct.type && selectedProduct.type !== 'Sin Variedad' && (
+                    <span className="text-blue-700"> - {selectedProduct.type}</span>
+                  )}
+                  {selectedProduct.quality && selectedProduct.quality !== 'Sin Clasificar' && (
+                    <span className="text-blue-600 font-normal ml-1">({selectedProduct.quality})</span>
+                  )}
+               </p>
+               {currentStock !== undefined && (
+                 <p className={`text-xs mt-1 font-medium ${stockWarning ? 'text-yellow-700' : 'text-slate-500'}`}>
+                   {stockWarning && <AlertTriangle className="h-3 w-3 inline mr-1 -mt-0.5" />}
+                   Stock actual: {currentStock.toFixed(2)} javas
+                 </p>
+               )}
+             </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-export default CascadeProductSelect;
+

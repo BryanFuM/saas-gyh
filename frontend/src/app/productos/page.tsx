@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '@/store/auth-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { CreatableSelect } from '@/components/ui/creatable-select';
 import { useToast } from '@/hooks/use-toast';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   useProducts, 
   useCreateProduct, 
@@ -18,11 +20,14 @@ import {
   useProductQualities,
   useCreateProductType,
   useCreateProductQuality,
+  useCheckProductUsage,
   Product,
 } from '@/hooks/use-products-supabase';
+import { useStock, StockItem } from '@/hooks/use-stock-supabase';
 import { ManageConfigModal } from './components/manage-config-modal';
+import { KardexDialog } from './components/kardex-dialog';
 
-// Tipos locales (ya no dependemos de api.ts)
+// Tipos locales
 interface ProductType {
   id: number;
   name: string;
@@ -32,7 +37,8 @@ interface ProductQuality {
   id: number;
   name: string;
 }
-import { Package, Plus, Edit, Trash2, Scale, Settings } from 'lucide-react';
+
+import { Package, Plus, Edit, Trash2, Scale, Settings, LayoutGrid, List as ListIcon, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -51,6 +57,7 @@ export default function ProductosPage() {
   
   // Data queries
   const { data: products = [], isLoading: productsLoading } = useProducts();
+  const { data: stockItems = [], isLoading: stockLoading } = useStock();
   const { data: types = [], isLoading: typesLoading } = useProductTypes();
   const { data: qualities = [], isLoading: qualitiesLoading } = useProductQualities();
   
@@ -58,8 +65,26 @@ export default function ProductosPage() {
   const createProductMutation = useCreateProduct();
   const updateProductMutation = useUpdateProduct();
   const deleteProductMutation = useDeleteProduct();
+  const checkProductUsageMutation = useCheckProductUsage();
   const createTypeMutation = useCreateProductType();
   const createQualityMutation = useCreateProductQuality();
+  
+  // States
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [activeCategory, setActiveCategory] = useState<string>('all');
+
+  // Form states
+  const [name, setName] = useState('');
+  const [type, setType] = useState('');
+  const [quality, setQuality] = useState('');
+  const [conversionFactor, setConversionFactor] = useState(20);
+
+  // Edit states
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editType, setEditType] = useState('');
+  const [editQuality, setEditQuality] = useState('');
+  const [editConversionFactor, setEditConversionFactor] = useState(20);
   
   // Dialog states
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -67,25 +92,47 @@ export default function ProductosPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   
-  // Form state
-  const [name, setName] = useState('');
-  const [type, setType] = useState('');
-  const [quality, setQuality] = useState('');
-  const [conversionFactor, setConversionFactor] = useState(20);
-  
-  // Edit state
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editType, setEditType] = useState('');
-  const [editQuality, setEditQuality] = useState('');
-  const [editConversionFactor, setEditConversionFactor] = useState(20);
-  
   // Delete state
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
+  const [deleteWarning, setDeleteWarning] = useState<string>('');
+  const [isSoftDelete, setIsSoftDelete] = useState(false);
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  // Derived State
+  const stockMap = useMemo(() => {
+    const map = new Map<number, StockItem>();
+    stockItems.forEach(item => map.set(item.product_id, item));
+    return map;
+  }, [stockItems]);
+
+  const normalizeName = (name: string) => {
+    if (!name) return '';
+    const trimmed = name.trim();
+    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+  };
+
+  const uniqueProductNames = useMemo(() => {
+    const names = new Set(products.map(p => normalizeName(p.name)));
+    return Array.from(names).sort();
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    let filtered = products;
+    
+    if (activeCategory !== 'all') {
+      filtered = products.filter(p => normalizeName(p.name) === activeCategory);
+    }
+    
+    // Sort by Type ASC, then Quality ASC (as requested)
+    return [...filtered].sort((a, b) => {
+       const typeCompare = a.type.localeCompare(b.type);
+       if (typeCompare !== 0) return typeCompare;
+       return a.quality.localeCompare(b.quality);
+    });
+  }, [products, activeCategory]);
 
   const resetProductForm = () => {
     setName('');
@@ -161,44 +208,74 @@ export default function ProductosPage() {
     }
   };
 
-  const openDeleteDialog = (product: Product) => {
+  const openDeleteDialog = async (product: Product) => {
     setDeletingProduct(product);
+    setDeleteWarning('Verificando historial...');
+    setIsSoftDelete(false);
     setIsDeleteDialogOpen(true);
+
+    try {
+      const { has_history, usage_count } = await checkProductUsageMutation.mutateAsync(product.id);
+      
+      if (has_history) {
+         setDeleteWarning(`Este producto tiene ${usage_count} movimientos históricos. Se archivará el producto (Soft Delete) y no aparecerá en nuevas operaciones, pero se mantendrá en los reportes.`);
+         setIsSoftDelete(true);
+      } else {
+         setDeleteWarning('Este producto no tiene uso. Se eliminará permanentemente de la base de datos.');
+         setIsSoftDelete(false);
+      }
+    } catch (error: any) {
+       console.error(error);
+       setDeleteWarning('No se pudo verificar el historial. Se intentará eliminar.');
+    }
   };
 
   const handleDelete = async () => {
-    if (!deletingProduct) return;
+    if (!deleteProductMutation.isPending && deletingProduct) {
+      try {
+        await deleteProductMutation.mutateAsync(deletingProduct.id);
 
-    try {
-      await deleteProductMutation.mutateAsync(deletingProduct.id);
+        toast({
+          title: "Éxito",
+          description: isSoftDelete ? "Producto archivado correctamente" : "Producto eliminado permanentemente",
+        });
 
-      toast({
-        title: "Éxito",
-        description: "Producto eliminado correctamente",
-      });
-
-      setIsDeleteDialogOpen(false);
-      setDeletingProduct(null);
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+        setIsDeleteDialogOpen(false);
+        setDeletingProduct(null);
+      } catch (error: any) {
+        toast({
+          title: "Error",
+          description: error.message || "Error al eliminar el producto",
+          variant: "destructive",
+        });
+      }
     }
   };
 
   const getQualityColor = (quality: string) => {
     switch (quality.toLowerCase()) {
       case 'primera':
-        return 'bg-green-100 text-green-800';
+        return 'bg-green-100 text-green-800 border-green-200';
       case 'segunda':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       case 'tercera':
-        return 'bg-orange-100 text-orange-800';
+        return 'bg-orange-100 text-orange-800 border-orange-200';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-100 text-gray-800 border-gray-200';
     }
+  };
+
+  // Stock Styling Logic
+  const getStockStatusColor = (stock: number) => {
+    if (stock <= 0) return 'text-red-600';
+    if (stock < 10) return 'text-amber-600';
+    return 'text-green-600';
+  };
+  
+  const getStockBadgeVariant = (stock: number) => {
+    if (stock <= 0) return 'destructive'; // Red
+    if (stock < 10) return 'secondary'; // Amber-ish usually, but secondary is gray. Let's use custom classes or overwrite
+    return 'default'; // Primary/Black
   };
 
   // Prepare options for CreatableSelect
@@ -224,20 +301,40 @@ export default function ProductosPage() {
   }
 
   const isAdmin = user?.role === 'ADMIN';
-  const isLoading = productsLoading || typesLoading || qualitiesLoading;
+  const isLoading = productsLoading || typesLoading || qualitiesLoading || stockLoading;
 
   return (
-    <div className="p-4 md:p-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 md:mb-8">
+    <div className="p-4 md:p-8 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Package className="h-6 w-6 md:h-8 md:w-8 text-primary" />
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold">Productos</h1>
-            <p className="text-sm md:text-base text-gray-500">Gestiona el catálogo de productos</p>
+            <h1 className="text-2xl md:text-3xl font-bold">Monitor de Inventario</h1>
+            <p className="text-sm md:text-base text-gray-500">Gestión de productos y stock en tiempo real</p>
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+           <div className="bg-muted p-1 rounded-lg flex items-center mr-2">
+              <Button 
+                variant={viewMode === 'grid' ? "secondary" : "ghost"} 
+                size="sm" 
+                className="h-8 w-8 p-0"
+                onClick={() => setViewMode('grid')}
+              >
+                 <LayoutGrid className="h-4 w-4" />
+              </Button>
+              <Button 
+                variant={viewMode === 'list' ? "secondary" : "ghost"}
+                size="sm" 
+                className="h-8 w-8 p-0"
+                onClick={() => setViewMode('list')}
+              >
+                 <ListIcon className="h-4 w-4" />
+              </Button>
+           </div>
+
           {isAdmin && (
             <>
               <Button 
@@ -253,20 +350,21 @@ export default function ProductosPage() {
                 <DialogTrigger asChild>
                   <Button>
                     <Plus className="h-4 w-4 mr-2" />
-                    Nuevo Producto
+                    Nuevo
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Registrar Nuevo Producto</DialogTitle>
                     <DialogDescription>
-                      Define el nombre, tipo, calidad y factor de conversión. Puedes crear nuevos tipos y calidades escribiendo en el selector.
+                       Configura el producto base. El stock se añade mediante "Ingresos".
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleSubmit}>
                     <div className="space-y-4 py-4">
+                      {/* Form Fields Same as Before */}
                       <div className="space-y-2">
-                        <Label htmlFor="name">Nombre del Producto</Label>
+                        <Label htmlFor="name">Nombre</Label>
                         <Input
                           id="name"
                           value={name}
@@ -275,39 +373,32 @@ export default function ProductosPage() {
                           required
                         />
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="type">Tipo</Label>
-                        <CreatableSelect
-                          options={typeOptions}
-                          value={type}
-                          onSelect={(val) => setType(val)}
-                          onCreate={handleCreateType}
-                          placeholder="Seleccionar o crear tipo..."
-                          searchPlaceholder="Buscar o crear tipo..."
-                          createLabel="Crear tipo"
-                          isLoading={typesLoading}
-                        />
+                      <div className="grid grid-cols-2 gap-4">
+                         <div className="space-y-2">
+                           <Label>Tipo</Label>
+                           <CreatableSelect
+                             options={typeOptions}
+                             value={type}
+                             onSelect={(val) => setType(val)}
+                             onCreate={handleCreateType}
+                             placeholder="Seleccionar..."
+                             isLoading={typesLoading}
+                           />
+                         </div>
+                         <div className="space-y-2">
+                           <Label>Calidad</Label>
+                           <CreatableSelect
+                             options={qualityOptions}
+                             value={quality}
+                             onSelect={(val) => setQuality(val)}
+                             onCreate={handleCreateQuality}
+                             placeholder="Seleccionar..."
+                             isLoading={qualitiesLoading}
+                           />
+                         </div>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="quality">Calidad</Label>
-                        <CreatableSelect
-                          options={qualityOptions}
-                          value={quality}
-                          onSelect={(val) => setQuality(val)}
-                          onCreate={handleCreateQuality}
-                          placeholder="Seleccionar o crear calidad..."
-                          searchPlaceholder="Buscar o crear calidad..."
-                          createLabel="Crear calidad"
-                          isLoading={qualitiesLoading}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="conversionFactor">
-                          <div className="flex items-center gap-2">
-                            <Scale className="h-4 w-4" />
-                            Factor de Conversión (kg por Java)
-                          </div>
-                        </Label>
+                        <Label htmlFor="conversionFactor">Factor de Conversión (Kg/Java)</Label>
                         <Input
                           id="conversionFactor"
                           type="number"
@@ -317,21 +408,11 @@ export default function ProductosPage() {
                           onChange={(e) => setConversionFactor(parseFloat(e.target.value) || 20)}
                           required
                         />
-                        <p className="text-xs text-muted-foreground">
-                          Cuántos kilogramos equivalen a una java de este producto
-                        </p>
                       </div>
                     </div>
                     <DialogFooter>
-                      <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                        Cancelar
-                      </Button>
-                      <Button 
-                        type="submit" 
-                        disabled={!name || !type || !quality || createProductMutation.isPending}
-                      >
-                        {createProductMutation.isPending ? 'Guardando...' : 'Guardar Producto'}
-                      </Button>
+                      <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                      <Button type="submit" disabled={createProductMutation.isPending}>Guardar</Button>
                     </DialogFooter>
                   </form>
                 </DialogContent>
@@ -341,162 +422,217 @@ export default function ProductosPage() {
         </div>
       </div>
 
-      {/* Products Grid */}
-      {isLoading ? (
-        <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-        </div>
-      ) : products.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Package className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500 text-lg">No hay productos registrados</p>
-            <p className="text-gray-400 text-sm">
-              {isAdmin 
-                ? 'Agrega tu primer producto usando el botón "Nuevo Producto"' 
-                : 'Contacta al administrador para agregar productos'}
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {products.map((product: Product) => (
-            <Card key={product.id}>
-              <CardHeader className="pb-3">
-                <div className="flex justify-between items-start">
-                  <CardTitle className="text-lg">{product.name}</CardTitle>
-                  <Badge className={getQualityColor(product.quality)}>
-                    {product.quality}
-                  </Badge>
-                </div>
-                <CardDescription>
-                  Tipo: {product.type}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex justify-between items-center">
-                  <div className="text-sm text-gray-500">
-                    <p>ID: #{product.id}</p>
-                    <p className="flex items-center gap-1">
-                      <Scale className="h-3 w-3" />
-                      {product.conversion_factor || 20} kg/java
-                    </p>
-                  </div>
-                  {isAdmin && (
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(product)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => openDeleteDialog(product)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      {/* Category Tabs */}
+      <Tabs value={activeCategory} onValueChange={setActiveCategory} className="w-full">
+         <div className="overflow-x-auto pb-2">
+            <TabsList>
+                <TabsTrigger value="all">Todos</TabsTrigger>
+                {uniqueProductNames.map(name => (
+                    <TabsTrigger key={name} value={name}>{name}</TabsTrigger>
+                ))}
+            </TabsList>
+         </div>
 
-      {/* Manage Config Modal */}
+         <TabsContent value={activeCategory} className="mt-4">
+             {isLoading ? (
+                <div className="flex justify-center py-12">
+                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+                </div>
+             ) : filteredProducts.length === 0 ? (
+                <div className="text-center py-12 border-2 border-dashed rounded-lg">
+                    <Package className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-500">No se encontraron productos en esta categoría.</p>
+                </div>
+             ) : (
+                <>
+                {viewMode === 'grid' ? (
+                    // GRID VIEW
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {filteredProducts.map((product) => {
+                         const stockItem = stockMap.get(product.id);
+                         const stockJavas = stockItem?.stock_javas || 0;
+                         const stockStatusClass = getStockStatusColor(stockJavas);
+                         
+                         return (
+                            <Card key={product.id} className="overflow-hidden">
+                              <CardHeader className="p-4 pb-2 bg-gray-50/50">
+                                <div className="flex justify-between items-start gap-2">
+                                  <h3 className="font-semibold text-lg leading-tight truncate" title={product.name}>
+                                    {product.name}
+                                  </h3>
+                                  <Badge variant="outline" className={`${getQualityColor(product.quality)} whitespace-nowrap`}>
+                                     {product.quality}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground uppercase tracking-wider">{product.type}</p>
+                              </CardHeader>
+                              
+                              <CardContent className="p-4 pt-4">
+                                  {/* Destacado: Stock */}
+                                  <div className="flex flex-col items-center justify-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-200 mb-4">
+                                     <span className={`text-4xl font-extrabold ${stockStatusClass}`}>
+                                        {Math.round(stockJavas * 100) / 100}
+                                     </span>
+                                     <span className="text-sm text-gray-500 font-medium">Javas Disponibles</span>
+                                     
+                                     <div className="mt-2 flex items-center gap-1 text-xs text-gray-400">
+                                         <Scale className="h-3 w-3" />
+                                         <span>~ {Math.round(stockJavas * product.conversion_factor * 100) / 100} Kg</span>
+                                         <span className="text-gray-300">|</span>
+                                         <span>Base: {product.conversion_factor}kg</span>
+                                     </div>
+                                  </div>
+
+                                  <div className="flex items-center justify-between mt-2">
+                                     <div className="flex items-center gap-2">
+                                        {stockJavas <= 0 && <span className="text-xs font-bold text-red-500 flex items-center gap-1"><AlertCircle className="h-3 w-3"/> Agotado</span>} 
+                                        {stockJavas > 0 && stockJavas < 10 && <span className="text-xs font-bold text-amber-500 flex items-center gap-1"><AlertCircle className="h-3 w-3"/> Stock Bajo</span>}
+                                        {stockJavas >= 10 && <span className="text-xs font-bold text-green-600 flex items-center gap-1"><CheckCircle2 className="h-3 w-3"/> Disponible</span>}
+                                     </div>
+
+                                     <div className="flex gap-1">
+                                        <KardexDialog productId={product.id} productName={product.name} />
+                                        {isAdmin && (
+                                          <>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(product)}>
+                                                <Edit className="h-4 w-4" />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => openDeleteDialog(product)}>
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                          </>
+                                        )}
+                                     </div>
+                                  </div>
+                              </CardContent>
+                            </Card>
+                         );
+                      })}
+                    </div>
+                ) : (
+                    // LIST VIEW (TABLE)
+                    <div className="border rounded-lg overflow-hidden">
+                        <Table>
+                            <TableHeader className="bg-gray-50">
+                                <TableRow>
+                                    <TableHead>Producto</TableHead>
+                                    <TableHead className="text-center">Factor (Kg/Java)</TableHead>
+                                    <TableHead className="text-center">Stock Javas</TableHead>
+                                    <TableHead className="text-center">Stock Aprox (Kg)</TableHead>
+                                    <TableHead className="text-right">Acciones</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {filteredProducts.map((product) => {
+                                    const stockItem = stockMap.get(product.id);
+                                    const stockJavas = stockItem?.stock_javas || 0;
+                                    const stockKg = stockItem?.stock_kg || (stockJavas * product.conversion_factor);
+
+                                    return (
+                                        <TableRow key={product.id}>
+                                            <TableCell>
+                                                <div className="flex flex-col">
+                                                    <span className="font-medium text-gray-900">{product.name}</span>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <Badge variant="outline" className="text-[10px] h-5">{product.type}</Badge>
+                                                        <Badge variant="outline" className={`${getQualityColor(product.quality)} text-[10px] h-5 border-none`}>{product.quality}</Badge>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-center text-gray-500">
+                                                {product.conversion_factor}
+                                            </TableCell>
+                                            <TableCell className="text-center">
+                                                <Badge
+                                                    className={`${
+                                                        stockJavas <= 0 ? 'bg-red-100 text-red-800 hover:bg-red-200' :
+                                                        stockJavas < 10 ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' :
+                                                        'bg-green-100 text-green-800 hover:bg-green-200'
+                                                    } border-none text-base px-3 py-1`}
+                                                >
+                                                    {Math.round(stockJavas * 100) / 100}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-center font-mono text-gray-600">
+                                                {Math.round(stockKg * 100) / 100} kg
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <div className="flex justify-end items-center gap-2">
+                                                    <KardexDialog productId={product.id} productName={product.name} />
+                                                    {isAdmin && (
+                                                        <>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500" onClick={() => openEditDialog(product)}>
+                                                                <Edit className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-600" onClick={() => openDeleteDialog(product)}>
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
+                            </TableBody>
+                        </Table>
+                    </div>
+                )}
+                </>
+             )}
+         </TabsContent>
+      </Tabs>
+
+      {/* MODALS - KEEPING EXISTING ONES */}
       <ManageConfigModal 
         open={isConfigModalOpen} 
         onOpenChange={setIsConfigModalOpen} 
       />
 
-      {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Editar Producto</DialogTitle>
-            <DialogDescription>
-              Modifica los datos del producto. Puedes crear nuevos tipos y calidades escribiendo en el selector.
-            </DialogDescription>
+             <DialogDescription>Modificando {editingProduct?.name}</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleEdit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="editName">Nombre del Producto</Label>
-                <Input
-                  id="editName"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  required
-                />
+                <Label htmlFor="editName">Nombre</Label>
+                <Input id="editName" value={editName} onChange={(e) => setEditName(e.target.value)} required />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                 <div className="space-y-2">
+                   <Label>Tipo</Label>
+                   <CreatableSelect options={typeOptions} value={editType} onSelect={setEditType} onCreate={handleCreateType} isLoading={typesLoading} />
+                 </div>
+                 <div className="space-y-2">
+                   <Label>Calidad</Label>
+                   <CreatableSelect options={qualityOptions} value={editQuality} onSelect={setEditQuality} onCreate={handleCreateQuality} isLoading={qualitiesLoading} />
+                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="editType">Tipo</Label>
-                <CreatableSelect
-                  options={typeOptions}
-                  value={editType}
-                  onSelect={(val) => setEditType(val)}
-                  onCreate={handleCreateType}
-                  placeholder="Seleccionar o crear tipo..."
-                  searchPlaceholder="Buscar o crear tipo..."
-                  createLabel="Crear tipo"
-                  isLoading={typesLoading}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="editQuality">Calidad</Label>
-                <CreatableSelect
-                  options={qualityOptions}
-                  value={editQuality}
-                  onSelect={(val) => setEditQuality(val)}
-                  onCreate={handleCreateQuality}
-                  placeholder="Seleccionar o crear calidad..."
-                  searchPlaceholder="Buscar o crear calidad..."
-                  createLabel="Crear calidad"
-                  isLoading={qualitiesLoading}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="editConversionFactor">
-                  <div className="flex items-center gap-2">
-                    <Scale className="h-4 w-4" />
-                    Factor de Conversión (kg por Java)
-                  </div>
-                </Label>
-                <Input
-                  id="editConversionFactor"
-                  type="number"
-                  step="0.1"
-                  min="0.1"
-                  value={editConversionFactor}
-                  onChange={(e) => setEditConversionFactor(parseFloat(e.target.value) || 20)}
-                  required
-                />
+                <Label>Factor de Conversión</Label>
+                <Input type="number" step="0.1" value={editConversionFactor} onChange={(e) => setEditConversionFactor(parseFloat(e.target.value) || 20)} required />
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={updateProductMutation.isPending}>
-                {updateProductMutation.isPending ? 'Guardando...' : 'Guardar Cambios'}
-              </Button>
+              <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={updateProductMutation.isPending}>Guardar Cambios</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar producto?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta acción no se puede deshacer. Se eliminará permanentemente el producto &quot;{deletingProduct?.name}&quot;.
-            </AlertDialogDescription>
+            <AlertDialogDescription>Si eliminas {deletingProduct?.name}, también se podría afectar el historial. Asegúrate de que no tenga movimientos.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleDelete} 
-              className="bg-red-600 hover:bg-red-700"
-              disabled={deleteProductMutation.isPending}
-            >
+            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700" disabled={deleteProductMutation.isPending}>
               {deleteProductMutation.isPending ? 'Eliminando...' : 'Eliminar'}
             </AlertDialogAction>
           </AlertDialogFooter>

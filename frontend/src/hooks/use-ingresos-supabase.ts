@@ -44,6 +44,7 @@ export interface IngresoItemCreate {
   supplier_name: string;
   product_id: number;
   total_kg: number;
+  quantity_javas?: number; // Added to support explicit Java input
   conversion_factor: number;
   cost_price_input: number;
   cost_price_mode: 'KG' | 'JAVA';
@@ -180,7 +181,12 @@ export function useCreateIngreso() {
         const costPerJava = item.cost_price_mode === 'JAVA' 
           ? item.cost_price_input 
           : item.cost_price_input * item.conversion_factor;
-        const quantityJavas = item.total_kg / item.conversion_factor;
+        
+        // Prioritize explicit javas if provided (Primary Mode), otherwise derive from Kg
+        const quantityJavas = item.quantity_javas !== undefined
+          ? item.quantity_javas 
+          : item.total_kg / item.conversion_factor;
+          
         const totalCost = costPerJava * quantityJavas;
         
         lote_total_kg += item.total_kg;

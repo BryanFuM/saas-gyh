@@ -37,14 +37,36 @@ export const TicketTemplate = React.forwardRef<HTMLDivElement, TicketTemplatePro
           </tr>
         </thead>
         <tbody>
-          {sale.items.map((item: any, index: number) => (
-            <tr key={index}>
-              <td>{item.product_name || `Prod ${item.product_id}`}</td>
-              <td className="text-right">{item.quantity_javas}</td>
-              <td className="text-right">{item.unit_sale_price}</td>
-              <td className="text-right">{(item.quantity_javas * item.unit_sale_price).toFixed(2)}</td>
-            </tr>
-          ))}
+          {sale.items.map((item: any, index: number) => {
+            // Handle different data structures (Supabase vs Local State)
+            const productName = item.product_name 
+               || item.product?.name 
+               || item.products?.name 
+               || `Prod ${item.product_id}`;
+               
+            const type = item.product_type || item.product?.type || item.products?.type || '';
+            const quality = item.product?.quality || item.products?.quality || '';
+            const fullName = `${productName} ${type} ${quality}`.trim();
+
+            // Calculate values
+            const quantity = parseFloat(item.quantity_javas || 0);
+            
+            // Handle mismatched unit prices (sometimes per kg, here we want per java for display?)
+            // Actually usually wholesale is per Java, but form inputs per Kg.
+            // Let's check what unit_sale_price represents.
+            // In sales-list mapping: unit_sale_price = subtotal / quantity_javas
+            const price = parseFloat(item.unit_sale_price || item.price_per_java || 0);
+            const subtotal = parseFloat(item.subtotal || (quantity * price) || 0);
+
+            return (
+              <tr key={index}>
+                <td className="pr-2 py-1 leading-tight">{fullName}</td>
+                <td className="text-right align-top">{quantity.toFixed(1)}</td>
+                <td className="text-right align-top">{price.toFixed(2)}</td>
+                <td className="text-right align-top">{subtotal.toFixed(2)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 

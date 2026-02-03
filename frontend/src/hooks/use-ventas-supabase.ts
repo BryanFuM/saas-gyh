@@ -25,14 +25,19 @@ export interface VentaCreateInput {
   client_id?: number | null;
   guest_client_name?: string | null;
   user_id?: string | null;  // UUID o null si no hay auth válido
-  payment_method?: 'EFECTIVO' | 'YAPE' | 'CREDITO';
+  payment_method?: 'EFECTIVO' | 'YAPE' | 'PLIN' | 'TRANSFERENCIA' | 'CREDITO';
   amortization?: number;
   items: Array<{
     product_id: number;
     quantity_kg: number;
+    quantity_javas?: number;
     price_per_kg: number;
   }>;
 }
+
+export type VentaUpdateInput = VentaCreateInput & {
+  venta_id: number;
+};
 
 export interface VentaListParams {
   date?: string;
@@ -193,6 +198,58 @@ export function useCreateVenta() {
     },
     onSuccess: () => {
       // Invalidate all related queries
+      queryClient.invalidateQueries({ queryKey: ventaKeys.all });
+      queryClient.invalidateQueries({ queryKey: stockKeys.all });
+      queryClient.invalidateQueries({ queryKey: clientKeys.all });
+      queryClient.invalidateQueries({ queryKey: clientKeys.withDebt });
+    },
+  });
+}
+
+/**
+ * Hook to update a venta using RPC (transaccional atómico)
+ */
+export function useUpdateVenta() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: VentaUpdateInput) => {
+      console.log('🔄 Updating venta via RPC...', input);
+
+      const isValidUUID = input.user_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.user_id);
+      
+      const { data, error } = await supabase.rpc('editar_venta', {
+        p_venta_id: input.venta_id,
+        p_type: input.type,
+        p_client_id: input.client_id || null,
+        p_guest_client_name: input.guest_client_name || null,
+        p_user_id: isValidUUID ? input.user_id : null,
+        p_payment_method: input.payment_method || 'EFECTIVO',
+        p_amortization: input.amortization || 0,
+        p_items: input.items,
+      });
+
+      if (error) {
+        console.error('❌ RPC Error:', error);
+        throw new Error(error.message);
+      }
+
+      const result = data as { 
+        success: boolean; 
+        venta_id?: number; 
+        error?: string;
+        total_amount?: number;
+        new_debt?: number;
+      };
+
+      if (!result.success) {
+        throw new Error(result.error || 'Error desconocido al actualizar la venta');
+      }
+
+      console.log('✅ Venta updated:', result);
+      return result;
+    },
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ventaKeys.all });
       queryClient.invalidateQueries({ queryKey: stockKeys.all });
       queryClient.invalidateQueries({ queryKey: clientKeys.all });

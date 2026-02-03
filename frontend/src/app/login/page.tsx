@@ -23,49 +23,48 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      // Buscar usuario en Supabase
-      const { data: user, error } = await supabase
-        .from('users')
-        .select('id, username, password_hash, role, is_active')
-        .eq('username', username)
-        .eq('is_active', true)
+      // 1. Auth con Supabase Authentication
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: username, // Asumiendo que el "usuario" ingresa email, o hay que manejar login con username custom
+        password: password,
+      });
+
+      if (authError) throw authError;
+      if (!authData.session) throw new Error('No se pudo establecer la sesión');
+
+      // 2. Obtener Rol desde tabla profiles
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role, username')
+        .eq('id', authData.user?.id)
         .single();
 
-      if (error || !user) {
-        throw new Error('Usuario no encontrado');
-      }
+      // Si no hay perfil (legacy user?), fallback o error
+      const userRole = profile?.role || 'VENDEDOR';
+      const userName = profile?.username || authData.user?.email || 'Usuario';
 
-      // Verificar contraseña (comparación simple para MVP)
-      // En producción usar bcrypt o Supabase Auth
-      if (user.password_hash !== password) {
-        throw new Error('Contraseña incorrecta');
-      }
-
-      // Crear token simple (en producción usar JWT o Supabase Auth)
-      const token = btoa(JSON.stringify({ 
-        id: user.id, 
-        username: user.username, 
-        role: user.role,
-        exp: Date.now() + (24 * 60 * 60 * 1000) // 24 horas
-      }));
-
+      // 3. Crear token compatible con el store actual (Bridge)
+      // Usamos el access_token de Supabase como nuestro token
       setAuth({ 
-        id: user.id,
-        username: user.username, 
-        role: user.role 
-      }, token);
+        id: authData.user!.id,
+        username: userName, 
+        role: userRole 
+      }, authData.session.access_token);
       
       toast({
         title: "Bienvenido",
-        description: `Sesión iniciada como ${user.role}`,
+        description: `Sesión iniciada como ${userRole}`,
       });
 
       router.push('/');
     } catch (error: any) {
+      console.error(error);
       toast({
         variant: "destructive",
-        title: "Error",
-        description: error.message || "Ocurrió un error al iniciar sesión",
+        title: "Error de Acceso",
+        description: error.message === 'Invalid login credentials' 
+          ? 'Credenciales incorrectas' 
+          : (error.message || "Ocurrió un error al iniciar sesión"),
       });
     } finally {
       setIsLoading(false);
@@ -76,17 +75,17 @@ export default function LoginPage() {
     <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
       <Card className="w-full max-w-[400px]">
         <CardHeader className="p-4 md:p-6">
-          <CardTitle className="text-xl md:text-2xl font-bold text-center">Agroinversiones Beto - Inventario</CardTitle>
-          <CardDescription className="text-center text-sm">Ingresa tus credenciales para continuar</CardDescription>
+          <CardTitle className="text-xl md:text-2xl font-bold text-center">Agroinversiones Beto</CardTitle>
+          <CardDescription className="text-center text-sm">Control de Inventario y Ventas</CardDescription>
         </CardHeader>
         <form onSubmit={handleLogin}>
           <CardContent className="space-y-4 p-4 md:p-6 pt-0 md:pt-0">
             <div className="space-y-2">
-              <Label htmlFor="username">Usuario</Label>
+              <Label htmlFor="username">Correo Electrónico</Label>
               <Input 
                 id="username" 
-                type="text" 
-                placeholder="admin" 
+                type="email" 
+                placeholder="admin@ejemplo.com" 
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required 

@@ -9,15 +9,31 @@ import { useToast } from '@/hooks/use-toast';
 import { Truck, Package, Plus, Scale, ArrowRight, Trash2, Users } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ProductSelect } from '@/components/ui/searchable-select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { CascadeProductSelect } from '@/components/ui/cascade-product-select';
 import { useProducts } from '@/hooks/use-products-supabase';
 import { useIngresos, useCreateIngreso, type IngresoLote, type IngresoItemCreate } from '@/hooks/use-ingresos-supabase';
 
 interface IngresoItemForm {
   id: string; // Unique ID for React key
   supplier_name: string;
-  product_id: number | null;
-  total_kg: string;
+  product_name: string | null;   // Paso 1
+  product_type: string | null;   // Paso 2
+  product_id: number | null;     // Paso 3 (Calidad)
+  
+  // Cantidad inputs
+  quantity_mode: 'JAVA' | 'KG';
+  quantity_input: string; // The value typed by user
+  
+  // Legacy fields kept for compatibility or calculation
+  total_kg: string; 
+  
   conversion_factor: string;
   cost_price_input: string;
   cost_price_mode: 'KG' | 'JAVA';
@@ -26,11 +42,17 @@ interface IngresoItemForm {
 const createEmptyItem = (): IngresoItemForm => ({
   id: crypto.randomUUID(),
   supplier_name: '',
+  product_name: null,
+  product_type: null,
   product_id: null,
-  total_kg: '',
+  
+  quantity_mode: 'JAVA', // Default preference
+  quantity_input: '',
+  total_kg: '', // Will be calculated
+  
   conversion_factor: '20',
   cost_price_input: '',
-  cost_price_mode: 'JAVA',
+  cost_price_mode: 'KG', // Original default
 });
 
 export default function IngresosPage() {
@@ -47,20 +69,40 @@ export default function IngresosPage() {
 
   // Calculate totals
   const calculateItemValues = useCallback((item: IngresoItemForm) => {
-    const totalKg = parseFloat(item.total_kg) || 0;
     const conversionFactor = parseFloat(item.conversion_factor) || 20;
-    const costInput = parseFloat(item.cost_price_input) || 0;
+    const inputValue = parseFloat(item.quantity_input) || 0;
     
-    const totalJavas = totalKg / conversionFactor;
+    // Calculate quantities based on mode
+    let totalJavas = 0;
+    let totalKg = 0;
+
+    if (item.quantity_mode === 'JAVA') {
+        totalJavas = inputValue;
+        totalKg = inputValue * conversionFactor;
+    } else {
+        totalKg = inputValue; // User typed KG
+        totalJavas = totalKg / conversionFactor;
+    }
+    
+    // Calculate costs
+    const costInput = parseFloat(item.cost_price_input) || 0;
     const costPerJava = item.cost_price_mode === 'KG' 
       ? costInput * conversionFactor 
       : costInput;
     const costPerKg = item.cost_price_mode === 'JAVA' 
       ? costInput / conversionFactor 
       : costInput;
+      
+    // Total cost depends on total javas
     const totalCost = costPerJava * totalJavas;
     
-    return { totalJavas, costPerJava, costPerKg, totalCost };
+    return { 
+        totalJavas, 
+        totalKg, // Return calculated Kgs
+        costPerJava, 
+        costPerKg, 
+        totalCost 
+    };
   }, []);
 
   const totals = useMemo(() => {
@@ -68,7 +110,7 @@ export default function IngresosPage() {
       (acc, item) => {
         const values = calculateItemValues(item);
         return {
-          kg: acc.kg + (parseFloat(item.total_kg) || 0),
+          kg: acc.kg + values.totalKg,
           javas: acc.javas + values.totalJavas,
           cost: acc.cost + values.totalCost,
         };
@@ -127,8 +169,8 @@ export default function IngresosPage() {
       if (!item.product_id) {
         return `Item ${i + 1}: Selecciona un producto`;
       }
-      if (!item.total_kg || parseFloat(item.total_kg) <= 0) {
-        return `Item ${i + 1}: Ingresa los KG totales`;
+      if (!item.quantity_input || parseFloat(item.quantity_input) <= 0) {
+        return `Item ${i + 1}: Ingresa la cantidad (${item.quantity_mode === 'JAVA' ? 'Javas' : 'KG'})`;
       }
       if (!item.cost_price_input || parseFloat(item.cost_price_input) <= 0) {
         return `Item ${i + 1}: Ingresa el precio de costo`;
@@ -147,16 +189,18 @@ export default function IngresosPage() {
       return;
     }
 
-    const ingresoItems: IngresoItemCreate[] = items.map(item => ({
-      supplier_name: item.supplier_name.trim(),
-      product_id: item.product_id!,
-      total_kg: parseFloat(item.total_kg),
-      conversion_factor: parseFloat(item.conversion_factor),
-      cost_price_input: parseFloat(item.cost_price_input),
-      cost_price_mode: item.cost_price_mode,
-    }));
-
-    try {
+    const ingresoItems: IngresoItemCreate[] = items.map(item => {
+      const values = calculateItemValues(item);
+      return {
+        supplier_name: item.supplier_name.trim(),
+        product_id: item.product_id!,
+        total_kg: values.totalKg, // Calculated KG
+        quantity_javas: values.totalJavas, // Calculated Javas
+        conversion_factor: parseFloat(item.conversion_factor),
+        cost_price_input: parseFloat(item.cost_price_input),
+        cost_price_mode: item.cost_price_mode,
+      };
+    }); try {
       await createIngreso.mutateAsync({
         truck_plate: truckId.trim(),
         items: ingresoItems,
@@ -282,7 +326,7 @@ export default function IngresosPage() {
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-2">
+                        <div className="space-y-2 sm:col-span-2">
                           <Label>Nombre del Proveedor</Label>
                           <Input
                             value={item.supplier_name}
@@ -291,31 +335,62 @@ export default function IngresosPage() {
                             required
                           />
                         </div>
-                        <div className="space-y-2">
-                          <Label>Producto</Label>
-                          <ProductSelect
+                        
+                        {/* 🆕 PRODUCT SELECTION (Cascading) - Full Width */}
+                        <div className="col-span-1 sm:col-span-2">
+                          <CascadeProductSelect
                             products={products}
-                            stockMap={stockMap}
-                            value={item.product_id}
+                            selectedProductId={item.product_id}
                             onSelect={(id) => handleProductChange(index, id)}
                             disabled={productsLoading || createIngreso.isPending}
+                            // No stock needed in Ingresos, or pass 0 if we want to show "Stock: 0.00 javas" inside
                           />
                         </div>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>Total KG</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={item.total_kg}
-                            onChange={(e) => updateItem(index, 'total_kg', e.target.value)}
-                            placeholder="0.00"
-                            required
-                          />
+                        {/* Removed Legacy Total KG Input */}
+                        <div className="space-y-4 sm:col-span-2">
+                           {/* Quantity Mode Selector & Input */}
+                           <div className="space-y-2">
+                            <Label className="text-sm font-medium">Cantidad</Label>
+                            <div className="flex gap-2">
+                                <Button
+                                type="button"
+                                variant={item.quantity_mode === 'JAVA' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => updateItem(index, 'quantity_mode', 'JAVA')}
+                                className="flex-1"
+                                >
+                                Por Javas
+                                </Button>
+                                <Button
+                                type="button"
+                                variant={item.quantity_mode === 'KG' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => updateItem(index, 'quantity_mode', 'KG')}
+                                className="flex-1"
+                                >
+                                Por KG
+                                </Button>
+                            </div>
+                            <div className="relative">
+                                <Input
+                                type="number"
+                                step="any"
+                                min="0.01"
+                                value={item.quantity_input}
+                                onChange={(e) => updateItem(index, 'quantity_input', e.target.value)}
+                                placeholder={item.quantity_mode === 'JAVA' ? 'Nº Javas' : 'Total KG'}
+                                required
+                                />
+                                <span className="absolute right-3 top-2.5 text-xs text-gray-500 font-medium">
+                                    {item.quantity_mode === 'JAVA' ? 'JAVAS' : 'KG'}
+                                </span>
+                            </div>
+                           </div>
                         </div>
+
                         <div className="space-y-2">
                           <Label>Factor (KG/Java)</Label>
                           <Input
@@ -330,12 +405,22 @@ export default function IngresosPage() {
                         </div>
                       </div>
 
-                      {/* Calculated javas */}
-                      <div className="p-3 bg-blue-50 rounded-lg flex items-center gap-2">
-                        <Scale className="h-4 w-4 text-blue-600" />
-                        <p className="text-sm text-blue-700">
-                          <strong>Javas:</strong> {values.totalJavas.toFixed(2)}
-                        </p>
+                      {/* Calculated Display */}
+                      <div className="p-3 bg-blue-50 rounded-lg flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                            <Scale className="h-4 w-4 text-blue-600" />
+                            <p className="text-sm text-blue-700 font-medium">
+                            Conversión Automática:
+                            </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 pl-6 text-sm">
+                            <div className={item.quantity_mode === 'JAVA' ? 'font-bold text-blue-900' : 'text-gray-600'}>
+                                {values.totalJavas.toFixed(2)} Javas
+                            </div>
+                            <div className={item.quantity_mode === 'KG' ? 'font-bold text-blue-900' : 'text-gray-600'}>
+                                {values.totalKg.toFixed(2)} KG
+                            </div>
+                        </div>
                       </div>
 
                       {/* Cost price */}
