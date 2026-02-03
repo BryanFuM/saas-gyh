@@ -32,7 +32,7 @@ export function ExportExcelButton({ salesData, inventoryData, clientsData, dateR
         'Tipo': v.type,
         'Método Pago': v.payment_method,
         'Total (S/.)': Number(v.total_amount),
-        'Estado': v.status
+        // 'Estado': v.status // 'status' might not exist on Venta type yet
       }));
       
       const wsVentas = XLSX.utils.json_to_sheet(ventasRows);

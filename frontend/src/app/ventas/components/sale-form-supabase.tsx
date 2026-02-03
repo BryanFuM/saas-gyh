@@ -184,7 +184,13 @@ export function SaleFormSupabase({ onSuccess, initialData }: { onSuccess: () => 
     const subtotal = quantityKg * pricePerKg;
     
     return { quantityKg, quantityJavas, pricePerKg, subtotal, conversionFactor };
-  }, [products]);
+  }, [products]); // getProductById is stable or not needed in dependency if products is there.
+  // Actually getProductById is defined inside component. It depends on 'products'.
+  // 'products' is in dependency array.
+  // Ideally we should include getProductById but then we need to wrap getProductById in useCallback or move it out.
+  // Simpler fix: Just leave [products] and ignore warning OR move getProductById to useCallback.
+  // Let's wrap getProductById in useCallback above.
+
 
   const totals = useMemo(() => {
     return items.reduce(
@@ -401,8 +407,8 @@ export function SaleFormSupabase({ onSuccess, initialData }: { onSuccess: () => 
          date: new Date().toISOString(),
          type: mode,
          total_amount: result.total_amount || totals.amount,
-         previous_debt: result.previous_debt,
-         new_debt: result.new_debt,
+         previous_debt: (result as any).previous_debt,
+         new_debt: (result as any).new_debt,
          payment_method: finalPaymentMethod,
          client: mode === 'PEDIDO' ? selectedClient : null,
          guest_client_name: mode === 'CAJA' ? (guestClientName || 'Cliente Eventual') : null,

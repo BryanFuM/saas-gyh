@@ -357,7 +357,7 @@ export default function ProductosPage() {
                   <DialogHeader>
                     <DialogTitle>Registrar Nuevo Producto</DialogTitle>
                     <DialogDescription>
-                       Configura el producto base. El stock se añade mediante "Ingresos".
+                       Configura el producto base. El stock se añade mediante &quot;Ingresos&quot;.
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleSubmit}>

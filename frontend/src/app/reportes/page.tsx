@@ -57,7 +57,8 @@ export default function ReportesPage() {
     // Strategy: If Product Selected -> Sum Items. If Not -> Sum Sale Totals.
     let filteredVentasValue = 0;
     let filteredVentasCount = 0;
-    let activeVentas = [];
+    let activeVentas: any[] = []; // Explicitly typed as any[] or Venta[] if available
+
 
     // Filter Ventas Base (Date & Type)
     const ventasBase = ventas.filter(v => 
