@@ -211,7 +211,7 @@ export default function HomePage() {
                           </div>
                       ))
                   )}
-                  {stats?.critical_stock?.length > 0 && (
+                  {stats?.critical_stock && stats.critical_stock.length > 0 && (
                      <Button variant="link" className="w-full text-red-600 h-auto p-0 pt-2" asChild>
                         <Link href="/ingresos">Ir a Ingresos <ArrowRight className="h-3 w-3 ml-1" /></Link>
                      </Button>
