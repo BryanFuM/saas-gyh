@@ -501,7 +501,7 @@ export default function IngresosPage() {
                            <ProductSelectorDialog 
                               products={products}
                               selectedProductId={item.product_id}
-                              onSelect={(id) => handleProductChange(index, id)}
+                              onSelect={(id: number) => handleProductChange(index, id)}
                               disabled={productsLoading || createIngreso.isPending}
                            />
                         </div>

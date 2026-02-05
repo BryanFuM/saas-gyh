@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/store/auth-store';
 import { format, parseISO, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -98,11 +98,7 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
     contentRef: ticketRef,
   });
 
-  useEffect(() => {
-    fetchSales();
-  }, [refreshKey, dateRange]);
-
-  const fetchSales = async () => {
+  const fetchSales = useCallback(async () => {
     setIsLoading(true);
     try {
       let query = supabase
@@ -151,7 +147,11 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [dateRange, toast]);
+
+  useEffect(() => {
+    fetchSales();
+  }, [fetchSales, refreshKey]);
 
   const hasClientName = (sale: VentaWithRelations) => {
     if (sale.clients?.name) return sale.clients.name;
