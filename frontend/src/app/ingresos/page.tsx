@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Truck, Package, Plus, Scale, ArrowRight, Trash2, Users, Search, Edit, Calendar as CalendarIcon, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Truck, Package, Plus, Scale, ArrowRight, Trash2, Users, Search, Edit, Calendar as CalendarIcon, ChevronLeft, ChevronRight, X, Filter } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
@@ -201,7 +201,7 @@ export default function IngresosPage() {
   };
 
   // Reset page when filter changes
-  useMemo(() => {
+  useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, dateRange]);
 

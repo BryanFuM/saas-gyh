@@ -138,7 +138,7 @@ const CreditTicketTemplate = React.forwardRef<HTMLDivElement, TicketTemplateProp
 
       <div className="mt-4 text-center">
         <p className="text-[10px] italic text-gray-500 leading-tight">
-          "Reconozco la deuda detallada en este documento y me comprometo a cancelarla en el plazo acordado."
+          &quot;Reconozco la deuda detallada en este documento y me comprometo a cancelarla en el plazo acordado.&quot;
         </p>
       </div>
     </div>
