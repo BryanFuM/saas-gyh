@@ -57,6 +57,7 @@ export function useClients() {
         .from('clients')
         .select('*')
         .eq('is_active', true)
+        .order('current_debt', { ascending: false })
         .order('name');
 
       if (error) {

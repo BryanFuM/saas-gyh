@@ -40,3 +40,25 @@ export function useDashboardStats() {
     refetchInterval: 30000, // Refresh every 30s for "Live Status" feel
   });
 }
+
+export interface DailyVolume {
+  name: string;
+  total_kg: number;
+}
+
+export function useDailyVolume() {
+  return useQuery({
+    queryKey: ['daily_volume'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_daily_volume_summary');
+      
+      if (error) {
+        console.error('Error fetching daily volume:', error);
+        throw new Error(error.message);
+      }
+      
+      return data as DailyVolume[];
+    },
+    refetchInterval: 30000,
+  });
+}

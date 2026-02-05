@@ -13,6 +13,7 @@ export interface Product {
   quality: string;
   conversion_factor: number;
   is_active: boolean;
+  requires_transport_data: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -23,6 +24,7 @@ export interface ProductInsert {
   quality: string;
   conversion_factor?: number;
   is_active?: boolean;
+  requires_transport_data?: boolean;
 }
 
 export interface ProductUpdate {
@@ -31,6 +33,7 @@ export interface ProductUpdate {
   quality?: string;
   conversion_factor?: number;
   is_active?: boolean;
+  requires_transport_data?: boolean;
 }
 
 export const productKeys = {

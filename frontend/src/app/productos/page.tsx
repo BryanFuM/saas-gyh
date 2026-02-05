@@ -5,6 +5,7 @@ import { useAuthStore } from '@/store/auth-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { CreatableSelect } from '@/components/ui/creatable-select';
@@ -78,6 +79,7 @@ export default function ProductosPage() {
   const [type, setType] = useState('');
   const [quality, setQuality] = useState('');
   const [conversionFactor, setConversionFactor] = useState(20);
+  const [requiresTransport, setRequiresTransport] = useState(true);
 
   // Edit states
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -85,6 +87,7 @@ export default function ProductosPage() {
   const [editType, setEditType] = useState('');
   const [editQuality, setEditQuality] = useState('');
   const [editConversionFactor, setEditConversionFactor] = useState(20);
+  const [editRequiresTransport, setEditRequiresTransport] = useState(true);
   
   // Dialog states
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -139,6 +142,7 @@ export default function ProductosPage() {
     setType('');
     setQuality('');
     setConversionFactor(20);
+    setRequiresTransport(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -150,6 +154,7 @@ export default function ProductosPage() {
         type,
         quality,
         conversion_factor: conversionFactor,
+        requires_transport_data: requiresTransport,
       });
 
       toast({
@@ -174,6 +179,7 @@ export default function ProductosPage() {
     setEditType(product.type);
     setEditQuality(product.quality);
     setEditConversionFactor(product.conversion_factor || 20);
+    setEditRequiresTransport(product.requires_transport_data ?? true);
     setIsEditDialogOpen(true);
   };
 
@@ -189,6 +195,7 @@ export default function ProductosPage() {
           type: editType,
           quality: editQuality,
           conversion_factor: editConversionFactor,
+          requires_transport_data: editRequiresTransport,
         },
       });
 
@@ -409,6 +416,21 @@ export default function ProductosPage() {
                           required
                         />
                       </div>
+                      <div className="flex items-center space-x-2 pt-2">
+                        <Checkbox 
+                          id="requiresTransport" 
+                          checked={requiresTransport}
+                          onCheckedChange={(checked) => setRequiresTransport(checked as boolean)}
+                        />
+                        <div className="grid gap-1.5 leading-none">
+                            <Label htmlFor="requiresTransport">
+                                Requiere datos de transporte
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                                Si está activo, pedirá placa, chofer y lote en los ingresos.
+                            </p>
+                        </div>
+                      </div>
                     </div>
                     <DialogFooter>
                       <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
@@ -614,6 +636,21 @@ export default function ProductosPage() {
               <div className="space-y-2">
                 <Label>Factor de Conversión</Label>
                 <Input type="number" step="0.1" value={editConversionFactor} onChange={(e) => setEditConversionFactor(parseFloat(e.target.value) || 20)} required />
+              </div>
+              <div className="flex items-center space-x-2 pt-2">
+                <Checkbox 
+                  id="editRequiresTransport" 
+                  checked={editRequiresTransport}
+                  onCheckedChange={(checked) => setEditRequiresTransport(checked as boolean)}
+                />
+                <div className="grid gap-1.5 leading-none">
+                    <Label htmlFor="editRequiresTransport">
+                        Requiere datos de transporte
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                        Si está desactivo, permite ingreso simple (ej. local).
+                    </p>
+                </div>
               </div>
             </div>
             <DialogFooter>

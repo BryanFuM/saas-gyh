@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useAuthStore } from '@/store/auth-store';
-import { useDashboardStats } from '@/hooks/use-dashboard-supabase';
+import { useDashboardStats, useDailyVolume } from '@/hooks/use-dashboard-supabase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
@@ -23,6 +23,7 @@ import Link from 'next/link';
 export default function HomePage() {
   const { user, isHydrated, hydrate } = useAuthStore();
   const { data: stats, isLoading } = useDashboardStats();
+  const { data: volumeStats } = useDailyVolume();
 
   useEffect(() => {
     hydrate();
@@ -60,65 +61,84 @@ export default function HomePage() {
       {/* ROW 1: LIVE STATUS KPIS */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1: Ventas Hoy */}
-        <Card className="border-l-4 border-l-blue-500 shadow-sm">
-          <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500 flex justify-between">
-              Ventas de Hoy
-              <ShoppingCart className="h-4 w-4 text-blue-500" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-2xl font-bold">S/ {(stats?.kpis.sales_today || 0).toFixed(2)}</div>
-            <div className={`text-xs flex items-center mt-1 ${isPositive ? 'text-green-600' : 'text-red-500'}`}>
-               {isPositive ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
-               {Math.abs(salesDiff).toFixed(2)} vs ayer
-            </div>
-          </CardContent>
-        </Card>
+        <Link href="/ventas">
+          <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-500 flex justify-between">
+                Ventas de Hoy
+                <ShoppingCart className="h-4 w-4 text-blue-500" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              <div className="text-2xl font-bold">S/ {(stats?.kpis.sales_today || 0).toFixed(2)}</div>
+              <div className={`text-xs flex items-center mt-1 ${isPositive ? 'text-green-600' : 'text-red-500'}`}>
+                 {isPositive ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
+                 {Math.abs(salesDiff).toFixed(2)} vs ayer
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
 
         {/* KPI 2: En Cajas (Efectivo) */}
-        <Card className="border-l-4 border-l-green-500 shadow-sm">
-          <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500 flex justify-between">
-              En Caja (Efectivo)
-              <Banknote className="h-4 w-4 text-green-500" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-2xl font-bold">S/ {(stats?.kpis.cash_today || 0).toFixed(2)}</div>
-            <p className="text-xs text-gray-400 mt-1">Disponible para gastos</p>
-          </CardContent>
-        </Card>
+        <Link href="/reportes">
+          <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-500 flex justify-between">
+                En Caja (Efectivo)
+                <Banknote className="h-4 w-4 text-green-500" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              <div className="text-2xl font-bold">S/ {(stats?.kpis.cash_today || 0).toFixed(2)}</div>
+              <p className="text-xs text-gray-400 mt-1">Disponible para gastos</p>
+            </CardContent>
+          </Card>
+        </Link>
 
         {/* KPI 3: Tickets */}
-        <Card className="border-l-4 border-l-purple-500 shadow-sm">
-          <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500 flex justify-between">
-              Tickets Hoy
-              <ClipboardList className="h-4 w-4 text-purple-500" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-2xl font-bold">{stats?.kpis.tickets_today || 0}</div>
-            <p className="text-xs text-gray-400 mt-1">Operaciones realizadas</p>
-          </CardContent>
-        </Card>
+        <Link href="/ventas">
+          <Card className="border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-500 flex justify-between">
+                Tickets Hoy
+                <ClipboardList className="h-4 w-4 text-purple-500" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              <div className="text-2xl font-bold">{stats?.kpis.tickets_today || 0}</div>
+              <p className="text-xs text-gray-400 mt-1">Operaciones realizadas</p>
+            </CardContent>
+          </Card>
+        </Link>
 
-        {/* KPI 4: Alertas Stock */}
-        <Card className={`border-l-4 shadow-sm ${ (stats?.kpis.low_stock_count || 0) > 0 ? 'border-l-red-500 bg-red-50/10' : 'border-l-gray-300' }`}>
-          <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500 flex justify-between">
-              Alertas Stock
-              <AlertCircle className={`h-4 w-4 ${ (stats?.kpis.low_stock_count || 0) > 0 ? 'text-red-500' : 'text-gray-400' }`} />
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className={`text-2xl font-bold ${ (stats?.kpis.low_stock_count || 0) > 0 ? 'text-red-600' : 'text-gray-700' }`}>
-                {stats?.kpis.low_stock_count || 0}
-            </div>
-            <p className="text-xs text-gray-400 mt-1">Productos por agotarse</p>
-          </CardContent>
-        </Card>
+        {/* KPI 4: Volumen Vendido Hoy (NUEVO) */}
+        <Link href="/ventas">
+          <Card className="border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-500 flex justify-between">
+                Volumen Vendido Hoy
+                <Package className="h-4 w-4 text-orange-500" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+               <div className="space-y-1 mt-1">
+                  {!volumeStats || volumeStats.length === 0 ? (
+                     <p className="text-sm text-gray-400 italic">Sin movimientos hoy</p>
+                  ) : (
+                     volumeStats.slice(0, 3).map((v, i) => (
+                       <div key={i} className="flex justify-between text-sm items-center">
+                          <span className="font-medium text-gray-700 truncate max-w-[100px]" title={v.name}>{v.name}</span>
+                          <span className="font-bold text-gray-900">{Number(v.total_kg).toFixed(1)} Kg</span>
+                       </div>
+                     ))
+                  )}
+                  {(volumeStats?.length || 0) > 3 && (
+                      <p className="text-xs text-orange-600 mt-1 font-medium pl-1">Ver más...</p>
+                  )}
+               </div>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       {/* ROW 2: GESTIÓN DE COBRANZAS */}
@@ -182,25 +202,25 @@ export default function HomePage() {
       </Card>
 
       {/* ROW 3: CRITICAL INVENTORY & ACCESOS */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
          {/* COL IZQ: Stock Crítico */}
-         <Card className="lg:col-span-1 shadow-sm border-t-4 border-t-red-500">
+         <Card className="lg:col-span-1 shadow-sm border-t-4 border-t-red-500 h-fit">
             <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                     <AlertCircle className="h-5 w-5 text-red-500" />
                     Stock Crítico
                 </CardTitle>
-                <CardDescription>Reponer urgentemente</CardDescription>
+                <CardDescription>Reponer urgentemente ({stats?.critical_stock?.length || 0} productos)</CardDescription>
             </CardHeader>
-            <CardContent>
-               <div className="space-y-3">
-                  {stats?.critical_stock?.length === 0 ? (
+            <CardContent className="p-0"> {/* Remove padding to let scroll work better or custom padding inside */}
+               <div className="space-y-3 h-[400px] overflow-y-auto p-6 pt-2">
+                  {!stats?.critical_stock || stats.critical_stock.length === 0 ? (
                       <div className="text-center py-6 text-green-600 bg-green-50 rounded-lg">
                           <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
                           <p className="text-sm font-medium">Inventario Saludable</p>
                       </div>
                   ) : (
-                      stats?.critical_stock?.map((item) => (
+                      stats.critical_stock.map((item) => (
                           <div key={item.product_id} className="flex justify-between items-center p-2 bg-red-50 rounded border border-red-100">
                              <span className="text-sm font-medium text-gray-700 truncate max-w-[150px]" title={item.full_name}>
                                 {item.full_name}
@@ -221,7 +241,7 @@ export default function HomePage() {
          </Card>
 
          {/* COL DER: Accesos Rápidos */}
-         <div className="lg:col-span-2 grid grid-cols-2 gap-4">
+         <div className="lg:col-span-2 grid grid-cols-2 gap-4 h-fit">
             <Button variant="outline" className="h-32 flex flex-col items-center justify-center gap-3 text-lg hover:border-blue-500 hover:bg-blue-50 transition-all shadow-sm" asChild>
                 <Link href="/ventas">
                    <div className="p-3 bg-blue-100 rounded-full text-blue-600">

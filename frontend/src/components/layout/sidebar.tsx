@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore, UserRole } from '@/store/auth-store';
 import { 
   LayoutDashboard, 
@@ -73,6 +73,7 @@ const sidebarItems: SidebarItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, logout, isHydrated, hydrate } = useAuthStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -84,6 +85,11 @@ export function Sidebar() {
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [pathname]);
+
+  const handleLogout = () => {
+    logout();
+    router.replace('/login');
+  };
 
   // Don't render anything until hydrated to avoid mismatch
   if (!isHydrated) return null;
@@ -121,7 +127,7 @@ export function Sidebar() {
         <Button 
           variant="ghost" 
           className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
-          onClick={logout}
+          onClick={handleLogout}
         >
           <LogOut className="mr-3 h-5 w-5" />
           Cerrar Sesión

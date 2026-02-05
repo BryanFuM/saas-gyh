@@ -34,7 +34,7 @@ import {
 } from '@/components/ui/select';
 import { CascadeProductSelect } from '@/components/ui/cascade-product-select';
 import { ClientSelect } from '@/components/ui/searchable-select';
-import { Plus, Trash2, Printer, Save, Scale, UserPlus, AlertTriangle, User } from 'lucide-react';
+import { Plus, Trash2, Printer, Save, Scale, UserPlus, AlertTriangle, User, ArrowLeft, Check, Box, Package, ShoppingCart } from 'lucide-react';
 import { TicketTemplate } from './ticket-template';
 import { useReactToPrint } from 'react-to-print';
 
@@ -132,7 +132,15 @@ export function SaleFormSupabase({ onSuccess, initialData }: { onSuccess: () => 
       : 'EFECTIVO'
   ); // 🆕 Método para amortización
   
-  const [items, setItems] = useState<SaleItem[]>(mapInitialItems());
+  const [items, setItems] = useState<SaleItem[]>(initialData ? mapInitialItems() : []);
+  // 🆕 POS STATE (3 LEVELS: FAMILY -> TYPE -> QUALITY)
+  const [currentItem, setCurrentItem] = useState<SaleItem>(createEmptyItem());
+  const [posView, setPosView] = useState<'FAMILY' | 'TYPE' | 'QUALITY'>('FAMILY');
+  const [selectedFamily, setSelectedFamily] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<string | null>(null);
+  
+  const kgInputRef = useRef<HTMLInputElement>(null);
+
   const [lastSale, setLastSale] = useState<any>(null);
   
   // Modal states
@@ -212,14 +220,174 @@ export function SaleFormSupabase({ onSuccess, initialData }: { onSuccess: () => 
     [items]
   );
 
+  // ==========================================
+  // ⚡ POS LOGIC (DRILL DOWN & INPUTS - 3 LEVEL)
+  // ==========================================
+  
+  // 1. Get Unique Families (Level 1)
+  const productFamilies = useMemo(() => {
+    const families = new Set(products.map(p => p.name));
+    return Array.from(families).sort();
+  }, [products]);
+
+  // 2. Get Unique Types for Selected Family (Level 2)
+  const familyTypes = useMemo(() => {
+    if (!selectedFamily) return [];
+    const types = new Set(
+        products
+        .filter(p => p.name === selectedFamily)
+        .map(p => p.type)
+    );
+    return Array.from(types).sort();
+  }, [products, selectedFamily]);
+
+  // 3. Get Qualities for Selected Family + Type (Level 3)
+  const typeQualities = useMemo(() => {
+     if (!selectedFamily || !selectedType) return [];
+     return products.filter(p => p.name === selectedFamily && p.type === selectedType);
+  }, [products, selectedFamily, selectedType]);
+
+  const updateCurrentItem = (updates: Partial<SaleItem>) => {
+    setCurrentItem(prev => ({ ...prev, ...updates }));
+  };
+
+  // STEP 1: Select Family
+  const handleFamilySelect = (familyName: string) => {
+    setSelectedFamily(familyName);
+    
+    // Check next Step (Types)
+    const availableProducts = products.filter(p => p.name === familyName);
+    const uniqueTypes = new Set(availableProducts.map(p => p.type));
+
+    if (uniqueTypes.size === 1) {
+        // Auto-select Type if only one
+        handleTypeSelect(Array.from(uniqueTypes)[0]);
+    } else {
+        setPosView('TYPE');
+    }
+  };
+
+  // STEP 2: Select Type
+  const handleTypeSelect = (typeName: string) => {
+      setSelectedType(typeName);
+
+      // Check next step (Qualities)
+      // Note: typeQualities memo depends on state, so we calculate locally here for immediate logic
+      const availableVariants = products.filter(p => p.name === selectedFamily && p.type === typeName);
+      
+      if (availableVariants.length === 1) {
+          // Auto-select product if only one quality
+          handleFinalProductSelect(availableVariants[0].id);
+      } else {
+          setPosView('QUALITY');
+      }
+  };
+
+  // STEP 3: Final Select (Quality -> Product ID)
+  const handleFinalProductSelect = (productId: number) => {
+    // Set Product
+    const product = products.find(p => p.id === productId);
+    const updates: Partial<SaleItem> = { product_id: productId, hasStockWarning: false };
+
+    // Auto-Calculate Javas if KG exists
+    if (product && currentItem.quantity_kg) {
+        const factor = product.conversion_factor || 17;
+        const kg = parseFloat(currentItem.quantity_kg);
+        updates.quantity_javas = (kg / factor).toFixed(2);
+    }
+
+    updateCurrentItem(updates);
+
+    // Focus Input
+    setTimeout(() => {
+        kgInputRef.current?.focus();
+    }, 50);
+  };
+    
+  // Breadcrumb Navigation
+  const goHome = () => {
+      setPosView('FAMILY');
+      setSelectedFamily(null);
+      setSelectedType(null);
+  };
+
+  const goType = () => {
+      if (selectedFamily) {
+        setPosView('TYPE');
+        setSelectedType(null);
+      }
+  };
+
+
+  // Handle numeric input for CURRENT ITEM (Bidirectional)
+  const handleCurrentNumericInput = (field: 'quantity_kg' | 'price_per_kg' | 'quantity_javas', value: string) => {
+    if (value === '' || /^\d*\.?\d*$/.test(value)) {
+      const cleaned = parseNumericInput(value);
+      const updates: Partial<SaleItem> = { [field]: cleaned };
+      
+      const product = getProductById(currentItem.product_id);
+      const conversionFactor = product?.conversion_factor || 17;
+
+      // Bidirectional Logic
+      if (field === 'quantity_kg') {
+          if (cleaned) {
+             updates.quantity_javas = (parseFloat(cleaned) / conversionFactor).toFixed(2);
+          } else {
+             updates.quantity_javas = '';
+          }
+      } else if (field === 'quantity_javas') {
+           if (cleaned) {
+              updates.quantity_kg = (parseFloat(cleaned) * conversionFactor).toFixed(2);
+           } else {
+              updates.quantity_kg = '';
+           }
+      }
+
+      // Check Stock Warning immediatately for UI feedback
+      if (product) {
+         const javasToCheck = field === 'quantity_javas' 
+             ? parseFloat(cleaned) 
+             : (updates.quantity_javas ? parseFloat(updates.quantity_javas) : 0);
+         
+         const stock = getStockForProduct(product.id);
+         updates.hasStockWarning = javasToCheck > stock;
+      }
+
+      updateCurrentItem(updates);
+    }
+  };
+
+  const handleAddItemToCart = () => {
+      if (!currentItem.product_id) {
+          toast({ variant: 'destructive', title: 'Falta Producto', description: 'Selecciona un producto primero.' });
+          return;
+      }
+      if (!parseFloat(currentItem.quantity_kg) || parseFloat(currentItem.quantity_kg) <= 0) {
+          toast({ variant: 'destructive', title: 'Cantidad Inválida', description: 'Ingresa un peso válido.' });
+          kgInputRef.current?.focus();
+          return;
+      }
+      if (!parseFloat(currentItem.price_per_kg) || parseFloat(currentItem.price_per_kg) <= 0) {
+          toast({ variant: 'destructive', title: 'Precio Inválido', description: 'Ingresa un precio válido.' });
+          return;
+      }
+      
+      setItems(prev => [...prev, { ...currentItem, id: crypto.randomUUID() }]);
+      
+      // Reset but keep some context? No, full reset for next item
+      setCurrentItem(createEmptyItem());
+      goHome();
+      
+      toast({ title: 'Agregado', description: 'Producto agregado a la lista.' });
+  };
+
+
   const addItem = () => {
     setItems(prev => [...prev, createEmptyItem()]);
   };
 
   const removeItem = (index: number) => {
-    if (items.length > 1) {
-      setItems(prev => prev.filter((_, i) => i !== index));
-    }
+    setItems(prev => prev.filter((_, i) => i !== index));
   };
 
   const updateItem = (index: number, updates: Partial<SaleItem>) => {
@@ -310,6 +478,16 @@ export function SaleFormSupabase({ onSuccess, initialData }: { onSuccess: () => 
 
   // 🆕 Validation without stock blocking
   const validateSale = (): string | null => {
+    // 🛡️ Validación básica de carrito vacío
+    if (items.length === 0) {
+      return 'Agrega al menos un producto a la venta';
+    }
+
+    // Verificar si el único item está vacío (cuando se inicializa con createEmptyItem)
+    if (items.length === 1 && !items[0].product_id) {
+        return 'Agrega al menos un producto a la venta';
+    }
+
     // En modo PEDIDO, cliente obligatorio
     if (mode === 'PEDIDO' && !selectedClientId) {
       return 'Selecciona un cliente para el pedido';
@@ -329,8 +507,19 @@ export function SaleFormSupabase({ onSuccess, initialData }: { onSuccess: () => 
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (!item.product_id) {
-        return `Producto ${i + 1}: Selecciona un producto`;
+        // Skip empty placeholder items if we have others or handle properly
+        // Actually items shouldn't contain empty items ideally if we use "Add to Cart" logic.
+        // But `mapInitialItems` creates one empty item if nothing exists.
+        // And `resetForm` does too.
+        // If we are validating for save, we must ensure valid items.
+        // If it's a "ghost" item at the end intended for input, ignore it?
+        // But here items are 'added' items. The input area is 'currentItem'.
+        // Wait, mapInitialItems returns [createEmptyItem()].
+        // If user hasn't added anything, items=[placeholder].
+        // So checking item.product_id fails.
+        return `Producto ${i + 1}: Selecciona un producto o elimínalo`;
       }
+      
       const values = calculateItemValues(item);
       if (values.quantityKg <= 0) {
         return `Producto ${i + 1}: Ingresa la cantidad en KG`;
@@ -637,108 +826,202 @@ export function SaleFormSupabase({ onSuccess, initialData }: { onSuccess: () => 
               </div>
             )}
 
-            {/* ===== PRODUCTOS CON SELECTOR EN CASCADA ===== */}
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <Label className="text-base md:text-lg font-semibold">Productos</Label>
-                <Button type="button" variant="outline" size="sm" onClick={addItem}>
-                  <Plus className="h-4 w-4 mr-1 md:mr-2" /> 
-                  <span className="hidden sm:inline">Agregar</span>
-                </Button>
-              </div>
-
-              {items.map((item, index) => {
-                const values = calculateItemValues(item);
-                const stockAvailable = getStockForProduct(item.product_id);
-                const stockKg = stockAvailable * values.conversionFactor;
+            {/* ===== SECCIÓN POS (NUEVA INTERFAZ) ===== */}
+            <div className="space-y-6">
                 
-                return (
-                  <div 
-                    key={item.id} 
-                    className={`flex flex-col gap-3 border rounded-lg p-4 ${
-                      item.hasStockWarning 
-                        ? 'bg-yellow-50/50 border-yellow-300' 
-                        : 'bg-gray-50/50'
-                    }`}
-                  >
-                    {/* 🆕 SELECTOR EN CASCADA COMPONETIZADO */}
-                    <CascadeProductSelect 
-                      products={products}
-                      selectedProductId={item.product_id}
-                      onSelect={(id) => handleProductChange(index, id)}
-                      disabled={createVenta.isPending}
-                      currentStock={stockAvailable}
-                      stockWarning={item.hasStockWarning}
-                    />
-                    
-                    {/* Cantidad, Precio, Subtotal */}
-                    <div className="flex flex-wrap gap-3 items-end">
-                      <div className="w-28 space-y-2">
-                        <Label className="text-sm flex items-center gap-1">
-                          <Scale className="h-3 w-3" />
-                          Cantidad (KG)
-                        </Label>
-                        <Input 
-                          type="text"
-                          inputMode="decimal"
-                          value={item.quantity_kg}
-                          onChange={(e) => handleNumericInput(index, 'quantity_kg', e.target.value)}
-                          placeholder="0"
-                          className={item.hasStockWarning ? 'border-yellow-400' : ''}
-                        />
+                {/* 1. SELECTOR DE PRODUCTOS (GRIDS) */}
+                <div className="bg-white rounded-xl border shadow-sm overflow-hidden p-4">
+                     {/* BREADCRUMB NAVIGATION */}
+                     <div className="mb-4 flex items-center gap-2 text-sm md:text-base flex-wrap">
+                         <Button variant="ghost" size="sm" onClick={goHome} className={`px-2 ${posView === 'FAMILY' ? 'font-bold underline decoration-blue-500 underline-offset-4' : 'text-gray-500'}`}>
+                            🏠 Inicio
+                         </Button>
+                         
+                         {selectedFamily && (
+                             <>
+                                <span className="text-gray-300">/</span>
+                                <Button variant="ghost" size="sm" onClick={goType} className={`px-2 ${posView === 'TYPE' ? 'font-bold underline decoration-blue-500 underline-offset-4' : 'text-gray-500'}`}>
+                                    {selectedFamily}
+                                </Button>
+                             </>
+                         )}
 
-                      {/* 🆕 NUEVO INPUT JAVAS (Editable) */}
-                      <div className="w-24 space-y-2">
-                        <Label className="text-sm flex items-center gap-1">
-                          📦 Javas
-                        </Label>
-                        <Input 
-                          type="text"
-                          inputMode="decimal"
-                          value={item.quantity_javas}
-                          onChange={(e) => handleNumericInput(index, 'quantity_javas', e.target.value)}
-                          placeholder="0"
-                          className={`bg-blue-50/50 ${item.hasStockWarning ? 'border-yellow-400' : ''}`}
-                        />
-                      </div>
+                        {selectedType && (
+                             <>
+                                <span className="text-gray-300">/</span>
+                                <Button variant="ghost" size="sm" disabled className={`px-2 ${posView === 'QUALITY' ? 'font-bold underline decoration-blue-500 underline-offset-4' : 'text-gray-500'}`}>
+                                    {selectedType}
+                                </Button>
+                             </>
+                         )}
 
-                      </div>
-                      <div className="w-28 space-y-2">
-                        <Label className="text-sm">Precio/KG (S/.)</Label>
-                        <Input 
-                          type="text"
-                          inputMode="decimal"
-                          value={item.price_per_kg}
-                          onChange={(e) => handleNumericInput(index, 'price_per_kg', e.target.value)}
-                          placeholder="0.00"
-                        />
-                      </div>
-                      <div className="flex-1 min-w-[100px] space-y-2">
-                        <Label className="text-sm text-muted-foreground">Subtotal</Label>
-                        <div className="h-10 flex items-center font-medium text-primary">
-                          S/ {values.subtotal.toFixed(2)}
-                        </div>
-                      </div>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                        onClick={() => removeItem(index)}
-                        disabled={items.length === 1}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                         {!selectedFamily && <span className="text-muted-foreground ml-2">Selecciona un producto...</span>}
                     </div>
 
-                    {item.product_id && values.quantityKg > 0 && (
-                      <p className="text-xs text-blue-600 flex items-center gap-1">
-                        <Scale className="h-3 w-3" />
-                        {values.quantityKg} kg = {values.quantityJavas.toFixed(2)} javas
-                      </p>
+                    {/* GRID NIVEL 1: FAMILIES */}
+                    {posView === 'FAMILY' && (
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 animate-in fade-in zoom-in-95 duration-200">
+                           {productFamilies.map(fam => (
+                               <Button 
+                                   key={fam} 
+                                   variant="outline" 
+                                   className="h-24 text-lg font-bold hover:bg-blue-50 border-2 hover:border-blue-500 whitespace-normal break-words shadow-sm transition-all"
+                                   onClick={() => handleFamilySelect(fam)}
+                               >
+                                   {fam}
+                               </Button>
+                           ))}
+                        </div>
                     )}
-                  </div>
-                );
-              })}
+
+                    {/* GRID NIVEL 2: TIPOS (Nuevo Nivel) */}
+                    {posView === 'TYPE' && (
+                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 animate-in fade-in slide-in-from-right-4 duration-200">
+                           {familyTypes.map(type => (
+                               <Button 
+                                   key={type} 
+                                   variant="outline" 
+                                   className="h-24 text-lg font-bold hover:bg-blue-50 border-2 hover:border-blue-500 whitespace-normal break-words shadow-sm transition-all"
+                                   onClick={() => handleTypeSelect(type)}
+                               >
+                                   {type}
+                               </Button>
+                           ))}
+                         </div>
+                    )}
+
+                    {/* GRID NIVEL 3: CALIDADES/VARIANTES (Final) */}
+                    {posView === 'QUALITY' && (
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 animate-in fade-in slide-in-from-right-4 duration-200">
+                           {typeQualities.map(prod => (
+                               <Button 
+                                   key={prod.id} 
+                                   variant={currentItem.product_id === prod.id ? "default" : "outline"} 
+                                   className={`h-24 flex flex-col items-center justify-center gap-1 border-2 transition-all ${currentItem.product_id === prod.id ? 'ring-2 ring-primary ring-offset-2 border-primary' : 'hover:border-blue-500'}`}
+                                   onClick={() => handleFinalProductSelect(prod.id)}
+                               >
+                                   <span className="font-bold text-lg">{prod.quality}</span>
+                                   {(stockMap[prod.id] || 0) < 10 && (
+                                      <span className="text-xs text-red-500 bg-red-100 px-2 py-0.5 rounded-full font-bold mt-1">
+                                         Stock: {(stockMap[prod.id] || 0).toFixed(1)}
+                                      </span>
+                                   )}
+                               </Button>
+                           ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* 2. INPUTS DE CANTIDAD (Zona Media) */}
+                <div className="grid grid-cols-12 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-200">
+                     <div className="col-span-12 mb-2">
+                         <Label className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Producto a Agregar</Label>
+                         <div className="text-xl font-bold text-blue-900 flex items-center gap-2 min-h-[32px]">
+                             {currentItem.product_id ? (
+                                 <>
+                                    <Box className="h-5 w-5" />
+                                    {getProductById(currentItem.product_id)?.name} - {getProductById(currentItem.product_id)?.type} {getProductById(currentItem.product_id)?.quality}
+                                 </>
+                             ) : (
+                                 <span className="text-gray-400 italic font-normal">Selecciona un producto arriba...</span>
+                             )}
+                         </div>
+                     </div>
+
+                     <div className="col-span-6 md:col-span-3">
+                        <Label className="text-sm font-medium mb-1.5 flex items-center gap-1"><Scale className="h-3 w-3" /> Peso (KG)</Label>
+                        <Input 
+                            ref={kgInputRef}
+                            className={`h-12 text-xl font-bold text-center ${!currentItem.quantity_kg ? 'bg-white' : 'bg-green-50 border-green-300'}`}
+                            placeholder="0.00"
+                            value={currentItem.quantity_kg}
+                            onChange={(e) => handleCurrentNumericInput('quantity_kg', e.target.value)}
+                            disabled={!currentItem.product_id}
+                        />
+                     </div>
+
+                     <div className="col-span-6 md:col-span-3">
+                        <Label className="text-sm font-medium mb-1.5 flex items-center gap-1"><Package className="h-3 w-3" /> Javas</Label>
+                        <Input 
+                             className="h-12 text-xl font-bold text-center"
+                             placeholder="0.00"
+                             value={currentItem.quantity_javas}
+                             onChange={(e) => handleCurrentNumericInput('quantity_javas', e.target.value)}
+                             disabled={!currentItem.product_id}
+                        />
+                     </div>
+
+                     <div className="col-span-6 md:col-span-3">
+                        <Label className="text-sm font-medium mb-1.5">Precio x KG</Label>
+                        <Input 
+                             className="h-12 text-xl font-bold text-center"
+                             placeholder="S/ 0.00"
+                             value={currentItem.price_per_kg}
+                             onChange={(e) => handleCurrentNumericInput('price_per_kg', e.target.value)}
+                             disabled={!currentItem.product_id}
+                        />
+                     </div>
+                     
+                     {/* 3. BOTÓN AGREGAR (Zona Inferior Inputs) */}
+                     <div className="col-span-6 md:col-span-3">
+                        <Button 
+                            className="w-full h-12 text-lg font-bold shadow-md bg-blue-600 hover:bg-blue-700 transition-all" 
+                            onClick={handleAddItemToCart}
+                            disabled={!currentItem.product_id || !parseFloat(currentItem.quantity_kg)}
+                        >
+                            AGREGAR <Plus className="ml-2 h-5 w-5" />
+                        </Button>
+                     </div>
+                </div>
+
+                {/* 4. TABLA DE ITEMS AGREGADOS (CARRITO) */}
+                {items.length > 0 ? (
+                    <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                        <Table>
+                            <TableHeader>
+                                <TableRow className="bg-gray-100">
+                                    <TableHead className="w-[40%]">Producto</TableHead>
+                                    <TableHead className="text-right">Peso/Javas</TableHead>
+                                    <TableHead className="text-right">Precio</TableHead>
+                                    <TableHead className="text-right">Subtotal</TableHead>
+                                    <TableHead className="w-[50px]"></TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {items.map((item, index) => {
+                                    const product = getProductById(item.product_id);
+                                    const vals = calculateItemValues(item);
+                                    return (
+                                        <TableRow key={item.id || index} className="hover:bg-gray-50">
+                                            <TableCell className="font-medium">
+                                                <div className="flex flex-col">
+                                                    <span className="text-base">{product?.name}</span>
+                                                    <span className="text-xs text-gray-500">{product?.type} {product?.quality}</span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <div className="font-bold">{vals.quantityKg.toFixed(2)} kg</div>
+                                                <div className="text-xs text-gray-400">{vals.quantityJavas.toFixed(1)} javas</div>
+                                            </TableCell>
+                                            <TableCell className="text-right">S/ {vals.pricePerKg.toFixed(2)}</TableCell>
+                                            <TableCell className="text-right font-bold text-blue-700">S/ {vals.subtotal.toFixed(2)}</TableCell>
+                                            <TableCell>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-700" onClick={() => removeItem(index)}>
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
+                            </TableBody>
+                        </Table>
+                    </div>
+                ) : (
+                    <div className="text-center py-8 text-gray-400 border-2 border-dashed rounded-lg">
+                        <ShoppingCart className="h-10 w-10 mx-auto mb-2 opacity-20" />
+                        <p>Carrito vacío. Agrega productos arriba.</p>
+                    </div>
+                )}
             </div>
           </CardContent>
           
@@ -829,15 +1112,6 @@ export function SaleFormSupabase({ onSuccess, initialData }: { onSuccess: () => 
                 <p className="text-sm text-gray-600">Pago: {paymentMethod}</p>
               </div>
             )}
-
-            {hasAnyStockWarning && (
-              <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-yellow-600" />
-                <span className="text-yellow-800">
-                  Esta venta incluye productos con stock insuficiente que se registrarán en negativo.
-                </span>
-              </div>
-            )}
             
             <Table>
               <TableHeader>
@@ -853,12 +1127,9 @@ export function SaleFormSupabase({ onSuccess, initialData }: { onSuccess: () => 
                   const product = getProductById(item.product_id);
                   const values = calculateItemValues(item);
                   return (
-                    <TableRow key={item.id} className={item.hasStockWarning ? 'bg-yellow-50' : ''}>
+                    <TableRow key={item.id}>
                       <TableCell>
-                        {product?.name || 'Producto'} - {product?.quality}
-                        {item.hasStockWarning && (
-                          <AlertTriangle className="h-3 w-3 inline ml-1 text-yellow-600" />
-                        )}
+                        {product?.name || 'Producto'} - {product?.type} - {product?.quality}
                       </TableCell>
                       <TableCell className="text-right">
                         {values.quantityKg} kg

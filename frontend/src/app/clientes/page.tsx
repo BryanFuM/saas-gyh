@@ -8,8 +8,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 import { Users, Plus, Phone, DollarSign, CreditCard, History, Edit, Trash2 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 // ✅ SUPABASE HOOKS
 import { 
@@ -45,6 +53,7 @@ export default function ClientesPage() {
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'EFECTIVO' | 'YAPE' | 'CREDITO'>('EFECTIVO');
   const [paymentNotes, setPaymentNotes] = useState('');
   
   // Edit Client dialog state
@@ -109,20 +118,45 @@ export default function ClientesPage() {
     e.preventDefault();
     if (!selectedClient) return;
 
+    const amount = parseFloat(paymentAmount);
+    const currentDebt = Number(selectedClient.current_debt || 0);
+    const newDebt = Math.max(0, currentDebt - amount);
+
     try {
       await registerPaymentMutation.mutateAsync({
         client_id: selectedClient.id,
-        amount: parseFloat(paymentAmount),
+        amount: amount,
+        payment_method: paymentMethod,
         notes: paymentNotes || undefined,
       });
 
+      // WhatsApp Logic
+      let waAction = undefined;
+      if (selectedClient.whatsapp_number) {
+          const cleanNumber = selectedClient.whatsapp_number.replace(/\D/g, '');
+          // Basic Peru format heuristic: if 9 digits, add 51.
+          const finalNumber = cleanNumber.length === 9 ? `51${cleanNumber}` : cleanNumber;
+          
+          const message = `Hola *${selectedClient.name}*, confirmamos tu pago de *S/. ${amount.toFixed(2)}*.\n\nTu saldo actual es: *S/. ${newDebt.toFixed(2)}*.\n\nGracias por tu preferencia.`;
+          const waLink = `https://wa.me/${finalNumber}?text=${encodeURIComponent(message)}`;
+
+          waAction = (
+            <ToastAction altText="Enviar confirmación" onClick={() => window.open(waLink, '_blank')}>
+                <Phone className="h-4 w-4 mr-2" />
+                Notificar por WhatsApp
+            </ToastAction>
+          );
+      }
+
       toast({
-        title: "Éxito",
-        description: `Pago de S/. ${paymentAmount} registrado correctamente`,
+        title: "Pago Registrado",
+        description: `Se descontaron S/. ${amount.toFixed(2)} de la deuda.`,
+        action: waAction,
       });
 
       // Reset form
       setPaymentAmount('');
+      setPaymentMethod('EFECTIVO');
       setPaymentNotes('');
       setIsPaymentDialogOpen(false);
       setSelectedClient(null);
@@ -217,6 +251,7 @@ export default function ClientesPage() {
   const openPaymentDialog = (client: Client) => {
     setSelectedClient(client);
     setPaymentAmount('');
+    setPaymentMethod('EFECTIVO');
     setPaymentNotes('');
     setIsPaymentDialogOpen(true);
   };
@@ -390,6 +425,22 @@ export default function ClientesPage() {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="paymentMethod">Método de Pago</Label>
+                <Select
+                  value={paymentMethod}
+                  onValueChange={(value: 'EFECTIVO' | 'YAPE' | 'CREDITO') => setPaymentMethod(value)}
+                >
+                  <SelectTrigger id="paymentMethod">
+                    <SelectValue placeholder="Seleccionar método" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="EFECTIVO">Efectivo (Cash)</SelectItem>
+                    <SelectItem value="YAPE">Yape / Plin / Transferencia</SelectItem>
+                    <SelectItem value="CREDITO">Crédito (Ajuste)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="paymentNotes">Notas (opcional)</Label>
                 <Textarea
                   id="paymentNotes"
@@ -444,6 +495,15 @@ export default function ClientesPage() {
                           hour: '2-digit',
                           minute: '2-digit'
                         })}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                        payment.payment_method === 'EFECTIVO' ? 'bg-green-100 text-green-700' :
+                        payment.payment_method === 'YAPE' ? 'bg-purple-100 text-purple-700' :
+                        'bg-blue-100 text-blue-700'
+                      }`}>
+                        {payment.payment_method}
                       </span>
                     </div>
                     {payment.notes && (

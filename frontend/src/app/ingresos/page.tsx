@@ -6,9 +6,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Truck, Package, Plus, Scale, ArrowRight, Trash2, Users } from 'lucide-react';
+import { Truck, Package, Plus, Scale, ArrowRight, Trash2, Users, Search, Edit, Calendar as CalendarIcon, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { DateRange } from 'react-day-picker';
+import { Badge } from '@/components/ui/badge';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   Select,
   SelectContent,
@@ -17,8 +28,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { CascadeProductSelect } from '@/components/ui/cascade-product-select';
+import { PosProductGrid } from '@/components/ui/pos-product-grid';
+import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useProducts } from '@/hooks/use-products-supabase';
-import { useIngresos, useCreateIngreso, type IngresoLote, type IngresoItemCreate } from '@/hooks/use-ingresos-supabase';
+import { useIngresos, useCreateIngreso, useDeleteIngreso, type IngresoLote, type IngresoItemCreate } from '@/hooks/use-ingresos-supabase';
 
 interface IngresoItemForm {
   id: string; // Unique ID for React key
@@ -55,6 +68,45 @@ const createEmptyItem = (): IngresoItemForm => ({
   cost_price_mode: 'KG', // Original default
 });
 
+// Helper component for managing Dialog state per row
+function ProductSelectorDialog({ products, selectedProductId, onSelect, disabled }: any) {
+    const [open, setOpen] = useState(false);
+    
+    // Find info for display
+    const selectedProduct = products.find((p: any) => p.id === selectedProductId);
+    const displayText = selectedProduct 
+        ? `${selectedProduct.name} - ${selectedProduct.type} - ${selectedProduct.quality}`
+        : "Seleccionar Producto...";
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+                <Button 
+                    variant="outline" 
+                    className={`w-full justify-between h-12 text-base ${!selectedProductId ? 'text-muted-foreground' : 'font-medium'}`}
+                    disabled={disabled}
+                >
+                    {displayText}
+                    <Package className="h-4 w-4 opacity-50" />
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>Seleccionar Producto</DialogTitle>
+                </DialogHeader>
+                <PosProductGrid 
+                    products={products}
+                    selectedProductId={selectedProductId}
+                    onSelect={(id) => {
+                        onSelect(id);
+                        setOpen(false);
+                    }}
+                />
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 export default function IngresosPage() {
   const { toast } = useToast();
   
@@ -62,10 +114,97 @@ export default function IngresosPage() {
   const { data: products = [], isLoading: productsLoading } = useProducts();
   const { data: ingresos = [], isLoading: ingresosLoading } = useIngresos();
   const createIngreso = useCreateIngreso();
+  const deleteIngreso = useDeleteIngreso();
   
   // Form state
   const [truckId, setTruckId] = useState('');
   const [items, setItems] = useState<IngresoItemForm[]>([createEmptyItem()]);
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('⚠️ PRECAUCIÓN: ELIMINAR INGRESO\n\nEsta acción:\n1. Eliminará el registro y sus items.\n2. RESTARÁ el stock ingresado del inventario.\n\n¿Estás seguro de continuar?')) return;
+    
+    try {
+      await deleteIngreso.mutateAsync(id);
+      toast({
+        title: "Ingreso Eliminado",
+        description: "El lote ha sido eliminado y el stock ha sido revertido correctamente.",
+        variant: "default",
+      });
+    } catch (error) {
+       console.error(error);
+       toast({
+        title: "Error al eliminar",
+        description: "Hubo un problema al intentar eliminar el registro.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Filter & Pagination State
+  const [searchTerm, setSearchTerm] = useState('');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
+
+  // Filter Logic
+  const filteredIngresos = useMemo(() => {
+    let result = ingresos || [];
+
+    // Search filter
+    if (searchTerm) {
+       const lower = searchTerm.toLowerCase();
+       result = result.filter((lote: IngresoLote) => 
+          lote.truck_plate.toLowerCase().includes(lower) || 
+          lote.items?.some(item => item.supplier_name.toLowerCase().includes(lower))
+       );
+    }
+
+    // Date filter
+    if (dateRange?.from) {
+       const from = new Date(dateRange.from);
+       from.setHours(0,0,0,0);
+       
+       const to = dateRange.to ? new Date(dateRange.to) : new Date(from);
+       to.setHours(23,59,59,999);
+
+       result = result.filter((lote: IngresoLote) => {
+          const date = new Date(lote.date);
+          return date >= from && date <= to;
+       });
+    }
+
+    return result;
+  }, [ingresos, searchTerm, dateRange]);
+
+  // KPIs
+  const kpis = useMemo(() => {
+     return filteredIngresos.reduce((acc, lote: IngresoLote) => ({
+        totalCost: acc.totalCost + (lote.total_cost || 0),
+        totalJavas: acc.totalJavas + (lote.total_javas || 0),
+        trucks: acc.trucks + 1
+     }), { totalCost: 0, totalJavas: 0, trucks: 0 });
+  }, [filteredIngresos]);
+
+  // Pagination Logic
+  const paginatedIngresos = useMemo(() => {
+     const start = (currentPage - 1) * itemsPerPage;
+     return filteredIngresos.slice(start, start + itemsPerPage);
+  }, [filteredIngresos, currentPage]);
+
+  const totalPages = Math.ceil(filteredIngresos.length / itemsPerPage);
+
+  // Pagination Handlers
+  const handlePageChange = (newPage: number) => {
+      if (newPage >= 1 && newPage <= totalPages) {
+          setCurrentPage(newPage);
+      }
+  };
+
+  // Reset page when filter changes
+  useMemo(() => {
+    setCurrentPage(1);
+  }, [searchTerm, dateRange]);
+
 
   // Calculate totals
   const calculateItemValues = useCallback((item: IngresoItemForm) => {
@@ -119,6 +258,25 @@ export default function IngresosPage() {
     );
   }, [items, calculateItemValues]);
 
+  // 🔍 LOGISTICS EXCEPTION LOGIC
+  // If all items are configured as "Local" (requires_transport_data = false), Truck Plate is optional.
+  const isLogisticsRequired = useMemo(() => {
+      // If list is empty or has items without product selected, default to required
+      if (items.length === 0) return true;
+      
+      const hasOnlyLocalProducts = items.every(item => {
+          if (!item.product_id) return false; // Not selected yet -> treat as potentially non-local -> required
+          const product = products.find((p: any) => p.id === item.product_id);
+          if (!product) return false;
+          
+          // Check the configuration flag
+          // If requires_transport_data is false, it's a local product (no plate needed)
+          return product.requires_transport_data === false;
+      });
+
+      return !hasOnlyLocalProducts;
+  }, [items, products]);
+
   // Update product conversion factor
   const handleProductChange = (index: number, productId: number | null) => {
     const product = products.find((p: { id: number }) => p.id === productId);
@@ -157,7 +315,8 @@ export default function IngresosPage() {
   };
 
   const validateForm = (): string | null => {
-    if (!truckId.trim()) {
+    // Check truck ID only if logistics required
+    if (isLogisticsRequired && !truckId.trim()) {
       return 'Ingresa la placa del camión';
     }
     
@@ -232,8 +391,8 @@ export default function IngresosPage() {
   };
 
   const getProductName = (productId: number): string => {
-    const product = products.find((p: { id: number; name: string; quality: string }) => p.id === productId);
-    return product ? `${product.name} (${product.quality})` : `Producto #${productId}`;
+    const product = products.find((p: { id: number; name: string; quality: string; type: string }) => p.id === productId);
+    return product ? `${product.name} - ${product.type} - ${product.quality}` : `Producto #${productId}`;
   };
 
   // Stock map (empty for product select - no stock filtering needed in ingresos)
@@ -265,19 +424,19 @@ export default function IngresosPage() {
           </CardHeader>
           <CardContent className="p-4 md:p-6 pt-0 md:pt-0">
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Truck ID */}
-              <div className="space-y-2">
+              {/* Truck ID - Conditionally Hidden or Optional */}
+              <div className={`space-y-2 ${!isLogisticsRequired ? 'opacity-60' : ''}`}>
                 <Label htmlFor="truckId" className="flex items-center gap-2">
                   <Truck className="h-4 w-4" />
-                  Placa del Camión
+                  Placa del Camión { !isLogisticsRequired && <span className="text-xs font-normal text-green-600">(Opcional - Mercadería Local)</span> }
                 </Label>
                 <Input
                   id="truckId"
                   value={truckId}
                   onChange={(e) => setTruckId(e.target.value.toUpperCase())}
-                  placeholder="ABC-123"
+                  placeholder={isLogisticsRequired ? "ABC-123" : "Opcional"}
                   className="font-mono"
-                  required
+                  required={isLogisticsRequired}
                 />
               </div>
 
@@ -336,15 +495,15 @@ export default function IngresosPage() {
                           />
                         </div>
                         
-                        {/* 🆕 PRODUCT SELECTION (Cascading) - Full Width */}
+                        {/* 🆕 PRODUCT SELECTION (POS GRID DIALOG) - Full Width */}
                         <div className="col-span-1 sm:col-span-2">
-                          <CascadeProductSelect
-                            products={products}
-                            selectedProductId={item.product_id}
-                            onSelect={(id) => handleProductChange(index, id)}
-                            disabled={productsLoading || createIngreso.isPending}
-                            // No stock needed in Ingresos, or pass 0 if we want to show "Stock: 0.00 javas" inside
-                          />
+                           <Label className="mb-2 block">Producto</Label>
+                           <ProductSelectorDialog 
+                              products={products}
+                              selectedProductId={item.product_id}
+                              onSelect={(id) => handleProductChange(index, id)}
+                              disabled={productsLoading || createIngreso.isPending}
+                           />
                         </div>
                       </div>
 
@@ -512,72 +671,196 @@ export default function IngresosPage() {
           </CardContent>
         </Card>
 
-        {/* Recent Ingresos */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              Lotes Recientes
-            </CardTitle>
-            <CardDescription>Últimos ingresos por camión</CardDescription>
+        {/* Recent Ingresos REDESIGN */}
+        <Card className="flex flex-col h-fit">
+          <CardHeader className="pb-3">
+             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                   <CardTitle className="flex items-center gap-2">
+                       <Package className="h-5 w-5" />
+                       Lotes Recientes
+                   </CardTitle>
+                   <CardDescription>Gestión de ingresos por camión</CardDescription>
+                </div>
+                
+                {/* KPIs Summary */}
+                <div className="flex divide-x border rounded-lg bg-gray-50/50 shadow-sm">
+                    <div className="px-3 py-2 text-center">
+                        <span className="text-xs text-gray-500 uppercase font-bold block">Gasto Total</span>
+                        <span className="text-green-600 font-bold">S/. {kpis.totalCost.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="px-3 py-2 text-center">
+                        <span className="text-xs text-gray-500 uppercase font-bold block">Javas</span>
+                        <span className="font-bold">{kpis.totalJavas.toFixed(1)}</span>
+                    </div>
+                     <div className="px-3 py-2 text-center">
+                        <span className="text-xs text-gray-500 uppercase font-bold block">Camiones</span>
+                        <span className="font-bold">{kpis.trucks}</span>
+                    </div>
+                </div>
+             </div>
           </CardHeader>
-          <CardContent>
-            {ingresosLoading ? (
-              <div className="text-center py-8">
-                <p className="text-gray-500">Cargando...</p>
-              </div>
-            ) : ingresos.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">No hay ingresos registrados</p>
-            ) : (
-              <div className="space-y-4">
-                {(ingresos as IngresoLote[]).slice(0, 10).map((lote) => (
-                  <div key={lote.id} className="p-4 border rounded-lg">
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <p className="font-medium flex items-center gap-2">
-                          <Truck className="h-4 w-4" />
-                          Camión: {lote.truck_plate}
-                        </p>
-                        <p className="text-sm text-gray-500">{formatDate(lote.date)}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold text-primary">
-                          {Number(lote.total_javas || 0).toFixed(2)} javas
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          {Number(lote.total_kg || 0).toFixed(2)} kg
-                        </p>
-                      </div>
-                    </div>
-                    
-                    {/* Items */}
-                    <div className="space-y-2 pt-3 border-t">
-                      {lote.items?.map((item, idx) => (
-                        <div key={idx} className="flex justify-between text-sm">
-                          <div>
-                            <span className="font-medium">{item.supplier_name}</span>
-                            <span className="text-gray-500"> - {item.product_name || getProductName(item.product_id)}</span>
-                          </div>
-                          <div className="text-right">
-                            <span>{Number(item.quantity_javas).toFixed(1)} j</span>
-                            <span className="text-gray-500 ml-2">
-                              S/. {Number(item.cost_per_java).toFixed(2)}/j
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
 
-                    {lote.total_cost && (
-                      <div className="mt-2 pt-2 border-t flex justify-between text-sm">
-                        <span className="text-gray-500">Costo Total:</span>
-                        <span className="font-medium">S/. {Number(lote.total_cost).toFixed(2)}</span>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+          <CardContent className="space-y-4">
+             {/* Toolbar */}
+             <div className="flex flex-col md:flex-row gap-3">
+                <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+                    <Input
+                        placeholder="Buscar placa, proveedor..."
+                        className="pl-8"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+                <DateRangePicker 
+                    dateRange={dateRange}
+                    onDateRangeChange={setDateRange}
+                    className="w-full md:w-[260px]"
+                />
+             </div>
+
+             {/* Content List */}
+             {ingresosLoading ? (
+                <div className="text-center py-12">
+                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                   <p className="text-gray-500">Cargando lotes...</p>
+                </div>
+             ) : filteredIngresos.length === 0 ? (
+                <div className="text-center py-12 border-2 border-dashed rounded-lg bg-gray-50">
+                    <Filter className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                    <p className="text-gray-500 font-medium">No se encontraron resultados</p>
+                    <p className="text-xs text-gray-400">Prueba ajustando los filtros</p>
+                </div>
+             ) : (
+                <div className="space-y-4">
+                    {paginatedIngresos.map((lote: IngresoLote) => (
+                        <div key={lote.id} className="border rounded-lg overflow-hidden shadow-sm bg-white transition-all hover:shadow-md">
+                            {/* Header Card */}
+                            <div className="bg-gray-50/80 p-3 border-b flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-white p-2 rounded-full border shadow-sm">
+                                        <Truck className="h-5 w-5 text-blue-600" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-bold text-lg">{lote.truck_plate}</span>
+                                            <Badge variant="outline" className="text-xs font-normal text-gray-500 bg-white border-gray-200">
+                                                {formatDate(lote.date)}
+                                            </Badge>
+                                        </div>
+                                        <span className="text-xs text-gray-400 font-mono">ID: #{lote.id}</span>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <span className="block text-xs text-gray-500 uppercase font-bold tracking-wider">Costo Total</span>
+                                    <span className="text-xl font-bold text-green-700">
+                                        S/. {(lote.total_cost || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Body Table */}
+                            <div className="p-0 overflow-x-auto">
+                                <Table>
+                                    <TableHeader className="bg-gray-50/30">
+                                        <TableRow className="hover:bg-transparent">
+                                            <TableHead className="w-[180px]">Proveedor</TableHead>
+                                            <TableHead className="min-w-[200px]">Producto</TableHead>
+                                            <TableHead className="text-right">Cantidad</TableHead>
+                                            <TableHead className="text-right">Costo Unit.</TableHead>
+                                            <TableHead className="text-right">Subtotal</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {lote.items?.map((item, idx) => (
+                                            <TableRow key={idx} className="hover:bg-gray-50/50">
+                                                <TableCell className="font-medium">
+                                                    <Badge variant="secondary" className="font-normal rounded-sm">
+                                                        {item.supplier_name}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex flex-col">
+                                                         <span className="font-medium text-gray-900">
+                                                             {item.product?.name || item.product_name}
+                                                         </span>
+                                                         {(item.product?.type || item.product?.quality) && (
+                                                             <span className="text-xs text-gray-500">
+                                                                 {item.product?.type} - {item.product?.quality}
+                                                             </span>
+                                                         )}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="font-medium">{Number(item.quantity_javas).toFixed(2)} javas</span>
+                                                        <span className="text-xs text-gray-400">({Number(item.total_kg).toFixed(2)} kg)</span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right text-gray-600">
+                                                    S/. {Number(item.cost_per_java).toFixed(2)}
+                                                </TableCell>
+                                                <TableCell className="text-right font-medium text-gray-900">
+                                                    S/. {Number(item.total_cost).toFixed(2)}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+
+                            {/* Footer Actions */}
+                            <div className="bg-gray-50 p-2 flex justify-end gap-2 border-t">
+                                <Button 
+                                    size="sm" 
+                                    variant="ghost" 
+                                    className="h-8 w-8 p-0" 
+                                    onClick={() => alert("La edición estará disponible próximamente.\n\nPara corregir, elimine este ingreso y créelo nuevamente.")}
+                                    title="Editar (Próximamente)"
+                                >
+                                    <Edit className="h-4 w-4 text-gray-500" />
+                                </Button>
+                                <Button 
+                                    size="sm" 
+                                    variant="ghost" 
+                                    className="h-8 w-8 p-0 hover:bg-red-50 hover:text-red-600 group" 
+                                    onClick={() => handleDelete(lote.id)}
+                                    disabled={deleteIngreso.isPending}
+                                    title="Eliminar y Revertir Stock"
+                                >
+                                    <Trash2 className={`h-4 w-4 ${deleteIngreso.isPending ? 'text-gray-300' : 'text-gray-500 group-hover:text-red-600'}`} />
+                                </Button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+             )}
+
+             {/* Pagination */}
+             {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 pt-4">
+                    <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                    >
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm text-gray-600">
+                        Página {currentPage} de {totalPages}
+                    </span>
+                    <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                    >
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </div>
+             )}
           </CardContent>
         </Card>
       </div>

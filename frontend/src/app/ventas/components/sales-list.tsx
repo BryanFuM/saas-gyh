@@ -50,6 +50,7 @@ interface VentaItem {
   venta_id: number;
   product_id: number;
   quantity_javas: number;
+  quantity_kg: number;
   subtotal: number;
   products: Product | null; // Relación anidada
 }
@@ -299,7 +300,7 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
                     <div className="flex flex-col gap-1">
                       {sale.venta_items.map((item, idx) => (
                         <span key={idx} className="text-sm">
-                          {item.quantity_javas} javas de {item.products?.name} ({item.products?.type} - {item.products?.quality})
+                          {Number(item.quantity_javas)} javas ({Number(item.quantity_kg).toFixed(2)} kg) de {item.products?.name} ({item.products?.type} - {item.products?.quality})
                         </span>
                       ))}
                     </div>
@@ -402,6 +403,7 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
         <div ref={ticketRef}>
           {saleToPrint ? (
              <TicketTemplate 
+               isReprint={true}
                sale={{
                  ...saleToPrint,
                  // Adaptar formato para el template si es necesario
@@ -409,9 +411,10 @@ export function SalesList({ refreshKey }: { refreshKey: number }) {
                     id: 0,
                     product_id: item.product_id,
                     quantity_javas: item.quantity_javas,
-                    unit_sale_price: (item.subtotal / item.quantity_javas).toFixed(2),
+                    unit_sale_price: item.quantity_javas ? (item.subtotal / item.quantity_javas).toFixed(2) : '0.00',
                     unit: 'java', // Default unit
-                    product_name: item.products?.name || 'Producto'
+                    product_name: item.products?.name || 'Producto',
+                    products: item.products // ✅ Pass full product relation for Type/Quality display
                  })),
                  type: saleToPrint.payment_method, // Usar metodo de pago como tipo
                  user_id: 0, // No disponible en esta vista, no crítico para ticket

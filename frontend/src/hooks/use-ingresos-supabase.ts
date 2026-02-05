@@ -253,28 +253,56 @@ export function useCreateIngreso() {
 }
 
 /**
- * Hook to delete an ingreso lote
+ * Hook to delete an ingreso lote via RPC
+ * @description Calls delete_entry_batch RPC to revert stock and delete record
  */
 export function useDeleteIngreso() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (id: number) => {
-      // Primero eliminar items
-      await supabase
-        .from('ingreso_items')
-        .delete()
-        .eq('ingreso_lote_id', id);
+      console.log('🗑️ Deleting ingreso using RPC:', id);
+      
+      const { error } = await supabase.rpc('delete_entry_batch', {
+        p_lote_id: id
+      });
 
-      // Luego eliminar lote
-      const { error } = await supabase
-        .from('ingreso_lotes')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw new Error(error.message);
+      if (error) {
+        console.error('❌ RPC Error:', error);
+        throw new Error(`Error al eliminar ingreso: ${error.message}`);
+      }
+      
+      console.log('✅ Ingreso deleted and stock reverted');
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ingresoKeys.all });
+      queryClient.invalidateQueries({ queryKey: stockKeys.all });
+    },
+  });
+}
+
+/**
+ * Hook to update an ingreso item via RPC
+ * @description Calls update_entry_item_quantity to change qty and adjust stock/cost
+ */
+export function useUpdateIngresoItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ itemId, newQuantity }: { itemId: number, newQuantity: number }) => {
+      console.log('✏️ Updating ingreso item via RPC:', { itemId, newQuantity });
+      
+      const { error } = await supabase.rpc('update_entry_item_quantity', {
+        p_item_id: itemId,
+        p_new_quantity_javas: newQuantity
+      });
+
+      if (error) {
+        console.error('❌ RPC Error:', error);
+        throw new Error(`Error al actualizar item: ${error.message}`);
+      }
+    },
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ingresoKeys.all });
       queryClient.invalidateQueries({ queryKey: stockKeys.all });
     },
